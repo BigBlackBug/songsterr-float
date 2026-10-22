@@ -17,14 +17,12 @@ const core = fs.readFileSync(path.join(__dirname, "src", "core.js"), "utf8");
 /* ---------- userscript ---------- */
 const meta = [
   ["name", "Songsterr Float"],
-  ["namespace", "https://github.com/fixsongsterr"],
+  ["namespace", `https://github.com/${repo}`],
   ["version", pkg.version],
-  ["description", "Desktop layout for Songsterr: top pill navigation, centered panels, popups under the pills"],
+  ["description", "Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search"],
   ["match", "https://www.songsterr.com/*"],
   ["match", "https://songsterr.com/*"],
   ["run-at", "document-start"],
-  ["grant", "GM_addStyle"],
-  ["grant", "GM.addStyle"],
 ];
 
 if (hasRepo) {
@@ -64,7 +62,7 @@ const entries = ["manifest.json", "content.js", "icons"];
 try {
   if (process.platform === "win32") cp.execFileSync("tar", ["-a", "-c", "-f", zipPath, ...entries], { cwd: ext });
   else cp.execFileSync("zip", ["-r", "-q", zipPath, ...entries], { cwd: ext });
-} catch (e) {
+} catch {
   console.warn("Не удалось создать zip автоматически — заархивируй содержимое dist/extension вручную.");
 }
 

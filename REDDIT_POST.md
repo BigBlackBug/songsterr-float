@@ -8,7 +8,7 @@ Not a fan of the new Songsterr UI? I wasn't either, so I built a small add-on th
 - the "original audio" video panel stacks above them instead of covering stuff
 - centered search / My tabs panels, consistent rounded corners
 
-It only changes layout (CSS + a bit of JS). No tracking, no network requests, no permissions, no account access. MIT licensed, source on GitHub.
+It changes layout (CSS + a bit of JS), keeps the BPM window open until you close it, and adds a ☆ to search results to save tabs to My tabs. No tracking, no extra permissions; the only requests are to Songsterr's own favorites API when you use the star. MIT licensed, source on GitHub.
 
 - Chrome / Edge / Brave: [download from Releases] 
 - Firefox: [AMO link / temporary install instructions in README]

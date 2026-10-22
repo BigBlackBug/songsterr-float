@@ -1,9 +1,22 @@
 {
   "name": "songsterr-float",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "license": "MIT",
   "description": "Unofficial desktop layout tweak for Songsterr: userscript + browser extension from one source",
-  "scripts": { "build": "node build.js" },
-  "config": { "repo": "lockiF/songsterr-float" }
+  "scripts": {
+    "build": "node build.js",
+    "lint": "eslint .",
+    "test": "node --test \"test/*.test.js\"",
+    "check": "npm run build && npm run lint && npm test"
+  },
+  "config": {
+    "repo": "lockiF/songsterr-float"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "jsdom": "^29.1.1"
+  }
 }

@@ -2,12 +2,16 @@
  * Структура файла:
  *   1. КОНФИГ        — все числа и имена классов сайта в одном месте
  *   2. СТИЛИ         — CSS собирается из функций; каждое свойство задано ОДИН раз
- *   3. УТИЛИТЫ
- *   4. ФУНКЦИИ       — dock, topBar, logo, videoStack, enterAnimations, scrollGuard, popups
- *   5. ЗАПУСК        — один MutationObserver, который вызывает функции по порядку
+ *   3. ЧИСТЫЕ ФУНКЦИИ — без DOM; их же проверяют тесты (test/*.test.js)
+ *   4. УТИЛИТЫ
+ *   5. ФУНКЦИИ       — classNames, dock, topBar, logo, videoStack, popups, pinned,
+ *                      scrollGuard, favorites
+ *   6. ЗАПУСК        — один MutationObserver, который вызывает функции по порядку
  *
- * Если сайт обновился и что-то отвалилось — почти всегда это хэшированные
- * классы: правятся только в объекте C.
+ * Сайт собран из CSS-модулей: класс = «хэш модуля» + «_» + «имя», например
+ * _0meAjW_bottomBarCenter. Хэш меняется при каждом редеплое Songsterr, имя — нет.
+ * Поэтому здесь хранятся только имена и последний известный хэш каждого модуля;
+ * если хэш устарел, classNames находит новый прямо на странице и пересобирает CSS.
  */
 (function () {
   "use strict";
@@ -40,50 +44,48 @@
     diffShift: 22,         // сдвиг страницы сравнения ревизий
     helpMenuBottom: -165,
     profilePopupBottom: -101,
+    starSize: 36,          // кнопка «в избранное» в строке поиска
     animMs: 180,
   };
   const CONTENT_TOP = G.pillOffset + G.pillHeight + G.panelGap;
 
   const Z = { dock: 900, video: 940, popupWindow: 950, tabs: 1000, panels: 1001, popup: 1100 };
 
-  // Хэшированные классы сайта (CSS-modules). Менять только здесь.
-  const C = {
-    barCenter: "_0meAjW_bottomBarCenter",
-    barRight: "_0meAjW_bottomBarRight",
-    profile: "_0meAjW_profile",
-    itemWrapper: "_0meAjW_itemWrapper",
-    helpMenu: "_0meAjW_helpMenu",
-    navItem: "_0meAjW_item",
-    navText: "_0meAjW_text",
-    toolsRow: "_5pcfpW_controlsTopPanelRow",
-    dockBar: "idrtTa_controls",
-    dockCard: "idrtTa_controlsCard",
-    dockItem: "idrtTa_item",
-    dockSettings: "idrtTa_settings",
-    video: "oCvYpa_panel",
-    revisionDate: "_8e144G_date",
-    fancyBox: "_6_NcWG_container",
-    fancyChecked: "_6_NcWG_labelChecked",
-    logo: "_9HBv-q_logoContainer",
+  /* Модули сайта: последний известный хэш и «якорь» — имя класса, по которому
+     модуль ищется на странице, когда хэш устарел. scope сужает поиск, confirm —
+     имена, которые обязаны быть у того же модуля (якорь вроде «panel» есть у многих). */
+  const MODULES = {
+    nav: { hash: "_0meAjW", anchor: "bottomBarCenter", scope: "#tablist" },
+    tools: { hash: "_5pcfpW", anchor: "controlsTopPanelRow" },
+    dock: { hash: "idrtTa", anchor: "controlsCard", scope: "#controls" },
+    video: { hash: "oCvYpa", anchor: "panel", confirm: ["video"] },
+    badge: { hash: "_8e144G", anchor: "date", confirm: ["badge"], scope: "#controls" },
+    fancy: { hash: "_6_NcWG", anchor: "labelChecked" },
+    logo: { hash: "_9HBv-q", anchor: "logoContainer" },
   };
 
-  // Селекторы, собранные из классов
-  const S = {
-    tabs: "#tablist",
-    nav: `#tablist > .${C.barCenter}:nth-child(1)`,
-    mid: `#tablist > .${C.barCenter}:nth-child(2)`,
-    right: `#tablist > .${C.barRight}`,
-    dock: "#controls",
-    bar: `#controls .${C.dockBar}`,
-    tools: `.${C.toolsRow}`,
-    video: `.${C.video}`,
-    popup: "[data-fixpopup]",
-    revisions: '[data-fixpopup="revisions"]',
-    inbox: "#inbox-popup",
-    help: "#help-menu",
-    profilePopup: "#profile-popup-desktop",
-    panels: "#panel-search, #panel-favorites, #panel-newtab",
+  // Классы сайта: [модуль, имя]. Готовые имена (с хэшем) лежат в C и D.
+  const CLASSES = {
+    barLeft: ["nav", "bottomBarLeft"],
+    barRight: ["nav", "bottomBarRight"],
+    profile: ["nav", "profile"],
+    navItem: ["nav", "item"],
+    navText: ["nav", "text"],
+    toolsRow: ["tools", "controlsTopPanelRow"],
+    dockBar: ["dock", "controls"],
+    dockCard: ["dock", "controlsCard"],
+    dockItem: ["dock", "item"],
+    dockSettings: ["dock", "settings"],
+    video: ["video", "panel"],
+    revisionDate: ["badge", "date"],
+    fancyBox: ["fancy", "container"],
+    fancyChecked: ["fancy", "labelChecked"],
+    logo: ["logo", "logoContainer"],
   };
+
+  const C = {}; // имена классов с хэшем — для classList
+  const D = {}; // те же классы как CSS-селекторы: ".имя" (экранированные)
+  const S = {}; // составные селекторы
 
   // Кнопки основного дока: группы слева направо. Между группами — разделитель.
   const MAIN_GROUPS = [
@@ -113,6 +115,14 @@
   const REVISION_TITLES = new Set(["Revisions", "Ревизии"]);
   const POPUP_TITLE_RE = /^(metronome|метроном|count[\s-]?in|speed|скорост|loop|зацикл)/i;
 
+  /* Окна, которые не закрываются кликом мимо них — только крестиком (или Esc).
+     У сайта один обработчик «клика снаружи» на все окна, и он пропускает клики
+     внутри [data-floating-direction]. Пока такое окно открыто, вешаем этот
+     атрибут на <html> — для обработчика любой клик оказывается «внутри». */
+  const PINNED_POPUPS = ['[data-tab-control="speed"]'];
+  const PIN_ATTR = "data-floating-direction";
+  const PIN_VALUE = "fx-pin"; // CSS сайта смотрит только на значение "up"
+
   // Параметры детекции окон и подъёма видео-панели
   const POPUP = {
     titleMinW: 250, titleMaxW: 520,   // ширина окна, найденного по заголовку
@@ -122,6 +132,8 @@
     maxDepth: 2,
     maxChildren: 40,
   };
+
+  const RESOLVE_EVERY_MS = 2000; // как часто можно искать новые хэши модулей
 
   /* ==========================================================
      2. СТИЛИ
@@ -165,6 +177,7 @@
   --fx-dur: ${G.animMs}ms;
   --help-menu-bottom: ${G.helpMenuBottom}px;
   --profile-popup-bottom: ${G.profilePopupBottom}px;
+  --star-size: ${G.starSize}px;
 
   /* производные */
   --dock-height: calc(var(--btn-size) + 2 * var(--dock-inset));
@@ -176,8 +189,9 @@
 `;
 
   /* Верхняя плашка: одна, шириной как док. [вкладки | разделитель | inbox, help | профиль].
-     Привязана к странице (absolute) и едет со скроллом, как логотип.
-     Чтобы она «висела на месте» — position: fixed здесь и в контейнере. */
+     Части плашки сайт переставляет между версиями, поэтому порядок задаётся
+     по содержимому (id пунктов меню), а не по позиции.
+     Привязана к странице (absolute) и едет со скроллом, как логотип. */
   const topBarCss = () => [
     rule("*:has(> #tablist)", {
       position: "absolute", top: 0, left: 0, right: "auto", bottom: "auto",
@@ -195,45 +209,40 @@
       background: "var(--pill-bg)", borderRadius: "var(--dock-radius)",
       boxShadow: "var(--pill-shadow)", zIndex: Z.tabs,
     }),
-    // бывшая центральная пилюля — левая часть общей плашки
-    rule(S.nav, {
-      position: "static", top: "auto", bottom: "auto", left: "auto", right: "auto",
-      transform: "none", order: -1, flex: "1 1 auto", width: "auto", maxWidth: "none",
-      height: "100%", margin: 0, padding: 0,
-      display: "flex", alignItems: "center", justifyContent: "space-between", boxSizing: "border-box",
-      background: "none", boxShadow: "none", borderRadius: 0,
-    }),
-    rule(`${S.mid}, ${S.right}`, {
-      position: "static", height: "auto", margin: 0, padding: 0,
-      background: "transparent", border: "none", boxShadow: "none",
-      display: "flex", alignItems: "center",
-    }),
-    rule(S.mid, { order: 1 }),
-    rule(S.right, { order: 2 }),
 
-    // иконки и текст
-    rule(
-      `${S.right} .${C.profile}, ${S.mid} > .${C.itemWrapper}, ${S.mid} > .${C.helpMenu}, ${S.nav} > .${C.itemWrapper}`,
-      { display: "flex", alignItems: "center", justifyContent: "center", margin: 0, padding: "0 14px" }
-    ),
-    rule(
-      `${S.right} .${C.profile}, ${S.mid} > .${C.itemWrapper}, ${S.mid} > .${C.helpMenu}`,
-      { padding: "0 10px" }
-    ),
-    rule(`${S.tabs} a.${C.navItem}`, {
+    // все части плашки: в строку, без своего фона; по умолчанию — правая группа
+    rule(`${S.tabs} > *`, {
+      position: "static", top: "auto", bottom: "auto", left: "auto", right: "auto",
+      transform: "none", order: 1, flex: "0 0 auto", width: "auto", maxWidth: "none",
+      height: "100%", margin: 0, padding: 0,
+      display: "flex", alignItems: "center", boxSizing: "border-box",
+      background: "none", border: "none", boxShadow: "none", borderRadius: 0,
+    }),
+    // вкладки (Search, My tabs, New tab…) — слева и забирают свободное место
+    rule(S.nav, { order: -1, flex: "1 1 auto", justifyContent: "space-between" }),
+    rule(S.helpPart, { order: 2 }),
+    rule(S.barLeft, { order: 3 }), // профиль / Sign In — последним
+
+    // пункты и текст
+    rule(`${S.tabs} > * > :not(.fx-sep), ${S.tabs} ${D.profile}`, {
+      display: "flex", alignItems: "center", justifyContent: "center",
+      height: "100%", margin: 0, padding: "0 10px",
+    }),
+    rule(`${S.nav} > *`, { padding: "0 14px" }),
+    rule(`${S.tabs} a${D.navItem}`, {
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       height: "100%", gap: "3px", textDecoration: "none",
     }),
-    rule(`${S.tabs} .${C.navText}`, {
+    rule(`${S.tabs} ${D.navText}`, {
       display: "block", visibility: "visible", opacity: 1, whiteSpace: "nowrap",
     }),
 
-    // разделители внутри плашки
-    rule(`${S.tabs} .fx-sep`, {
-      flex: "0 0 1px", width: "1px", height: "var(--sep-height)", margin: 0, padding: 0,
-      border: 0, background: "var(--divider)", alignSelf: "center", pointerEvents: "none",
+    // разделитель между вкладками и правой группой (создаёт JS)
+    rule(`${S.tabs} > .fx-sep`, {
+      order: 0, flex: "0 0 1px", width: "1px", height: "var(--sep-height)",
+      margin: "0 10px", padding: 0, border: 0,
+      background: "var(--divider)", alignSelf: "center", pointerEvents: "none",
     }),
-    rule(`${S.tabs} > .fx-sep`, { margin: "0 10px" }),
   ].join("\n");
 
   // Центральные панели (поиск, My tabs, New tab) и попапы верхней плашки
@@ -277,7 +286,7 @@
     rule(S.dock, { pointerEvents: "none" }, false),
     rule("#controls > *", { pointerEvents: "auto" }, false),
 
-    rule(`#controls .${C.dockCard}`, {
+    rule(`#controls ${D.dockCard}`, {
       width: "100%", minWidth: 0, maxWidth: "100%", overflow: "visible", boxSizing: "border-box",
     }),
     rule(S.bar, {
@@ -294,19 +303,19 @@
     ...MAIN_GROUPS.flatMap((ids, g) =>
       ids.map((id, i) => rule(`${S.bar} > #${id}`, { order: btnOrder(g, i) }))
     ),
-    rule(`${S.bar} > .${C.dockItem}`, {
+    rule(`${S.bar} > ${D.dockItem}`, {
       position: "relative", flex: "0 0 var(--btn-size)",
       width: "var(--btn-size)", height: "var(--btn-size)", minWidth: 0,
       margin: 0, padding: 0,
       display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
     }),
-    rule(`${S.bar} > .${C.dockItem} > button:not(.${C.dockSettings})`, {
+    rule(`${S.bar} > ${D.dockItem} > button:not(${D.dockSettings})`, {
       width: "100%", height: "100%", margin: 0,
     }),
     rule(`${S.bar} > #c-play`, {
       flex: "0 0 auto", width: "auto", height: "var(--btn-size)", alignItems: "center", gap: "6px",
     }),
-    rule(`${S.bar} > .${C.dockItem}:not(#c-play) > button, ${S.bar} > #c-play > button:first-child`, {
+    rule(`${S.bar} > ${D.dockItem}:not(#c-play) > button, ${S.bar} > #c-play > button:first-child`, {
       borderRadius: "var(--btn-radius)",
     }),
 
@@ -386,7 +395,9 @@
     ),
   ].join("\n");
 
-  // Окна микшера, транспонирования, настроек, ревизий (помечает JS: data-fixpopup)
+  /* Окна микшера, транспонирования, настроек, ревизий (помечает JS: data-fixpopup).
+     Они живут в слое попапов сайта (position: fixed; z-index ниже дока), поэтому
+     поднять их над доком через z-index нельзя — только не пересекаться с ним. */
   const popupsCss = () => [
     rule(S.popup, {
       position: "fixed", top: "auto", left: "auto",
@@ -408,21 +419,47 @@
         top: "var(--pill-offset)", maxHeight: "calc(100vh - 2 * var(--pill-offset))",
       })
     ),
+    // на узком экране док доходит до правой колонки — окна стоят над ним
+    media(
+      NARROW,
+      rule(`${S.popup}, html body:has(${S.video}) ${S.popup}`, {
+        bottom: "var(--panel-bottom)",
+        maxHeight: "calc(100vh - var(--content-top) - var(--panel-bottom))",
+      })
+    ),
   ].join("\n");
 
   // Мелкие правки: логотип, баннер ревизий, декоративная линия, страница diff
   const miscCss = () => [
     // вид логотипа родной, меняется только top (центр совпадает с центром плашки);
-    // точную поправку на странице сравнения добавляет logo.align()
-    rule(`.${C.logo}`, {
+    // точную поправку на странице сравнения добавляет alignLogo()
+    rule(`${D.logo}`, {
       top: `calc(var(--pill-offset) + (var(--pill-height) - ${G.logoHeight}px) / 2)`,
     }),
-    rule(`.${C.revisionDate}`, { top: "-6px" }, false),
-    rule(`.${C.fancyBox}:before, .${C.fancyBox}:has(.${C.fancyChecked}:first-child):before`, {
+    rule(`${D.revisionDate}`, { top: "-6px" }, false),
+    rule(`${D.fancyBox}:before, ${D.fancyBox}:has(${D.fancyChecked}:first-child):before`, {
       content: "unset", animation: "unset",
     }),
     // страница сравнения ревизий: заголовок не под плашкой (флаг ставит JS)
     rule("html[data-fx-diff] body", { paddingTop: "var(--diff-shift)" }),
+  ].join("\n");
+
+  // Звёздочка «в избранное» в строках поиска (создаёт favorites)
+  const favoritesCss = () => [
+    rule(`${S.searchPanel} .fx-star`, {
+      flex: "0 0 var(--star-size)", width: "var(--star-size)", height: "var(--star-size)",
+      margin: "0 0 0 4px", padding: 0, border: 0, borderRadius: "50%",
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      background: "transparent", color: "rgba(255, 255, 255, 0.35)", cursor: "pointer",
+      transition: "color 0.12s ease-out, background-color 0.12s ease-out",
+    }),
+    rule(`${S.searchPanel} .fx-star:hover, ${S.searchPanel} .fx-star:focus-visible`, {
+      color: "#fff", background: "rgba(255, 255, 255, 0.08)", outline: "none",
+    }),
+    rule(`${S.searchPanel} .fx-star[aria-pressed="true"]`, { color: "#f5c518" }),
+    rule(`${S.searchPanel} .fx-star[aria-busy="true"]`, { opacity: 0.5, pointerEvents: "none" }),
+    rule(`${S.searchPanel} .fx-star svg`, { width: "20px", height: "20px", display: "block" }),
+    rule(`${S.searchPanel} .fx-star[aria-pressed="true"] svg`, { fill: "currentColor" }),
   ].join("\n");
 
   /* Анимации появления. Родные у большинства окон заглушены transform: none !important,
@@ -433,31 +470,116 @@
 
   /* раскрытие дока в режиме редактирования; старт с 0.5, иначе кнопки на миг «пропадают» */
   @keyframes fx-expand { from { opacity: 0.5; } to { opacity: 1; } }
-  .${C.dockBar}.fx-expand > * { animation: fx-expand var(--fx-dur) ease-out backwards; }
+  ${D.dockBar}.fx-expand > * { animation: fx-expand var(--fx-dur) ease-out backwards; }
 }
 `;
 
-  const css = [
+  /* ==========================================================
+     3. ЧИСТЫЕ ФУНКЦИИ
+     ========================================================== */
+
+  // Класс модуля → годный CSS-идентификатор (хэш может начинаться с «-цифры»)
+  const escapeClass = (name) => name.replace(/^(-?)(\d)/, (_, dash, d) => `${dash}\\3${d} `);
+
+  // Пересчитать C, D и S из текущих хэшей MODULES
+  function refreshNames() {
+    for (const [key, [mod, local]] of Object.entries(CLASSES)) {
+      C[key] = `${MODULES[mod].hash}_${local}`;
+      D[key] = "." + escapeClass(C[key]);
+    }
+    Object.assign(S, {
+      tabs: "#tablist",
+      nav: "#tablist > :has(#menu-search)",
+      helpPart: "#tablist > :has(#bottombar-help)",
+      barLeft: `#tablist > ${D.barLeft}`,
+      dock: "#controls",
+      bar: `#controls ${D.dockBar}`,
+      tools: `${D.toolsRow}`,
+      video: `${D.video}`,
+      popup: "[data-fixpopup]",
+      revisions: '[data-fixpopup="revisions"]',
+      inbox: "#inbox-popup",
+      help: "#help-menu",
+      profilePopup: "#profile-popup-desktop",
+      panels: "#panel-search, #panel-favorites, #panel-newtab",
+      searchPanel: "#panel-search",
+    });
+  }
+  refreshNames();
+
+  const buildCss = () => [
     tokens(), topBarCss(), panelsCss(), dockCss(), toolsCss(),
-    videoCss(), popupsCss(), miscCss(), animationsCss(),
+    videoCss(), popupsCss(), miscCss(), favoritesCss(), animationsCss(),
   ].join("\n");
 
-  function injectStyles(styles) {
-    try {
-      if (typeof GM_addStyle === "function") return GM_addStyle(styles);
-      if (typeof GM !== "undefined" && GM.addStyle) return GM.addStyle(styles);
-    } catch (e) {
-      // падаем на обычный <style>
+  /* Новый хэш модуля по классам, найденным на странице.
+     tokens — классы, оканчивающиеся на «_якорь»; hasClass(name) — есть ли такой класс
+     в документе (для проверки confirm). Возвращает хэш или null. */
+  function findModuleHash(tokens, mod, hasClass) {
+    const suffix = "_" + mod.anchor;
+    for (const token of tokens) {
+      if (!token.endsWith(suffix)) continue;
+      const hash = token.slice(0, -suffix.length);
+      if (!/^[\w-]{4,12}$/.test(hash)) continue;
+      if ((mod.confirm || []).every((name) => hasClass(`${hash}_${name}`))) return hash;
     }
-    const el = document.createElement("style");
-    el.textContent = styles;
-    (document.head || document.documentElement).appendChild(el);
+    return null;
   }
 
-  injectStyles(css);
+  function planEditLayout(extras) {
+    const groups = EDIT_LAYOUT.map((g) => g.filter((i) => i < extras.length)).filter((g) => g.length);
+
+    // кнопки, не попавшие в раскладку, — отдельной группой перед последней
+    const used = new Set(groups.flat());
+    const leftovers = extras.map((_, i) => i).filter((i) => !used.has(i));
+    if (leftovers.length) groups.splice(Math.max(groups.length - 1, 0), 0, leftovers);
+
+    const order = new Map();
+    const seps = [];
+    let k = 0;
+
+    groups.forEach((g, gi) => {
+      if (gi > 0) seps.push(EDIT_BASE + k++);
+      g.forEach((i) => order.set(extras[i], EDIT_BASE + k++));
+    });
+
+    return { order, seps };
+  }
+
+  const isPopupTitle = (t) =>
+    POPUP_TITLES.has(t) || (t.length < 40 && POPUP_TITLE_RE.test(t));
+
+  // /a/wsa/metallica-master-of-puppets-tab-s455118(t3)? → 455118
+  function parseSongId(href) {
+    const m = /-s(\d+)(?:t\d+)?\/?(?:[?#].*)?$/.exec(href || "");
+    return m ? Number(m[1]) : null;
+  }
+
+  // Ответ GET /api/favorites → Set songId
+  function parseFavoriteIds(data) {
+    const list = Array.isArray(data) ? data : [];
+    return new Set(
+      list
+        .map((song) => (song && typeof song === "object" ? song.songId ?? song.id : song))
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+  }
+
+  const API = {
+    G, MODULES, CLASSES, C, D, S, PINNED_POPUPS, PIN_ATTR, PIN_VALUE,
+    rule, escapeClass, refreshNames, buildCss, findModuleHash, planEditLayout,
+    isPopupTitle, parseSongId, parseFavoriteIds,
+  };
+
+  // Без DOM (node, тесты) — только отдаём чистые функции
+  if (typeof document === "undefined") {
+    if (typeof module === "object" && module.exports) module.exports = API;
+    return;
+  }
 
   /* ==========================================================
-     3. УТИЛИТЫ
+     4. УТИЛИТЫ
      ========================================================== */
 
   const root = document.documentElement;
@@ -489,13 +611,82 @@
     return sep;
   }
 
+  // Стили: свой <style>, чтобы пересобрать его при смене хэшей
+  let styleEl = null;
+
+  function applyStyles() {
+    const css = buildCss();
+    if (styleEl && styleEl.isConnected) {
+      styleEl.textContent = css;
+      return;
+    }
+    try {
+      if (typeof GM_addStyle === "function") {
+        const el = GM_addStyle(css);
+        if (el instanceof HTMLStyleElement) styleEl = el;
+        return;
+      }
+    } catch {
+      // падаем на обычный <style>
+    }
+    styleEl = document.createElement("style");
+    styleEl.textContent = css;
+    (document.head || root).appendChild(styleEl);
+  }
+
+  applyStyles();
+
+  /* fetch от имени страницы. В Firefox fetch контент-скрипта идёт от расширения
+     (без cookies сайта), а content.fetch — от страницы. */
+  const pageFetch =
+    typeof content !== "undefined" && content && typeof content.fetch === "function"
+      ? content.fetch.bind(content)
+      : fetch.bind(window);
+
   /* ==========================================================
-     4. ФУНКЦИИ
+     5. ФУНКЦИИ
      ========================================================== */
 
-  /* ---------- 4.1 Анимации появления ---------- */
+  /* ---------- 5.1 Хэши модулей ----------
+     Если якорный класс модуля пропал со страницы, ищем класс с тем же именем,
+     но другим хэшем. Нашли — пересобираем CSS. Не чаще RESOLVE_EVERY_MS. */
 
-  const ENTER_SEL = `${S.inbox}, ${S.help}, ${S.profilePopup}, ${S.video}`;
+  let lastResolve = -Infinity;
+
+  function resolveModules() {
+    const now = performance.now();
+    if (now - lastResolve < RESOLVE_EVERY_MS) return;
+    lastResolve = now;
+
+    let changed = false;
+
+    for (const [name, mod] of Object.entries(MODULES)) {
+      if (document.getElementsByClassName(`${mod.hash}_${mod.anchor}`).length) continue;
+
+      const scope = document.querySelector(mod.scope || "body");
+      if (!scope) continue; // модуля на этой странице просто нет
+
+      const tokens = new Set();
+      const found = [scope, ...scope.querySelectorAll(`[class*="_${mod.anchor}"]`)];
+      found.forEach((el) => el.classList.forEach((c) => tokens.add(c)));
+
+      const hash = findModuleHash(tokens, mod, (cls) => document.getElementsByClassName(cls).length > 0);
+      if (hash && hash !== mod.hash) {
+        console.info(`[Songsterr Float] модуль ${name}: хэш ${mod.hash} → ${hash}`);
+        mod.hash = hash;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      refreshNames();
+      applyStyles();
+    }
+  }
+
+  /* ---------- 5.2 Анимации появления ---------- */
+
+  const enterSel = () => `${S.inbox}, ${S.help}, ${S.profilePopup}, ${S.video}`;
 
   function playEnter(el) {
     if (el instanceof HTMLElement && !el.classList.contains("fx-enter")) el.classList.add("fx-enter");
@@ -503,8 +694,9 @@
 
   function markEnter(node) {
     if (!(node instanceof HTMLElement)) return;
-    if (node.matches(ENTER_SEL)) playEnter(node);
-    node.querySelectorAll(ENTER_SEL).forEach(playEnter);
+    const sel = enterSel();
+    if (node.matches(sel)) playEnter(node);
+    node.querySelectorAll(sel).forEach(playEnter);
   }
 
   function cleanupAnimation(e) {
@@ -513,37 +705,17 @@
     if (e.animationName === "fx-pop-in") {
       e.target.classList.remove("fx-enter");
     } else if (e.animationName === "fx-expand") {
-      const bar = e.target.closest("." + C.dockBar);
+      const bar = e.target.closest(D.dockBar);
       if (bar) bar.classList.remove("fx-expand");
     }
   }
 
-  /* ---------- 4.2 Нижний док ----------
+  /* ---------- 5.3 Нижний док ----------
      Функция идемпотентная: каждый раз считает нужное состояние по текущему DOM.
      React переиспользует узлы между режимами, поэтому наш order нужно не только
      ставить, но и снимать с узлов, которые перестали быть кнопками редактирования. */
 
   const isSep = (el) => el.classList.contains("fx-sep");
-
-  function planEditLayout(extras) {
-    const groups = EDIT_LAYOUT.map((g) => g.filter((i) => i < extras.length)).filter((g) => g.length);
-
-    // кнопки, не попавшие в раскладку, — отдельной группой перед последней
-    const used = new Set(groups.flat());
-    const leftovers = extras.map((_, i) => i).filter((i) => !used.has(i));
-    if (leftovers.length) groups.splice(Math.max(groups.length - 1, 0), 0, leftovers);
-
-    const order = new Map();
-    const seps = [];
-    let k = 0;
-
-    groups.forEach((g, gi) => {
-      if (gi > 0) seps.push(EDIT_BASE + k++);
-      g.forEach((i) => order.set(extras[i], EDIT_BASE + k++));
-    });
-
-    return { order, seps };
-  }
 
   function applyOrders(items, orderMap) {
     items.forEach((el) => {
@@ -609,10 +781,10 @@
   }
 
   function syncDock() {
-    document.querySelectorAll("." + C.dockBar).forEach(syncDockBar);
+    document.querySelectorAll(S.bar).forEach(syncDockBar);
   }
 
-  /* ---------- 4.3 Логотип ----------
+  /* ---------- 5.4 Логотип ----------
      На странице сравнения ревизий родной контейнер стоит ниже, поэтому CSS-значения
      top мало: измеряем, где логотип стоит сейчас, и подправляем top так, чтобы его
      центр совпал с центром плашки. На обычных страницах поправка ~0. */
@@ -627,7 +799,7 @@
 
   // ищем по виду: блок ~212x43 у левого края, затем поднимаемся к внешней обёртке того же размера
   function findLogo() {
-    const cands = document.querySelectorAll(`.${C.logo}, [class*="logo" i], a[href="/"]`);
+    const cands = document.querySelectorAll(`${D.logo}, [class*="logo" i], a[href="/"]`);
 
     for (const c of cands) {
       if (c.closest("#tablist, #controls, #help-menu, #profile-popup-desktop")) continue;
@@ -673,7 +845,7 @@
   window.addEventListener("resize", scheduleLogo);
   window.addEventListener("load", scheduleLogo);
 
-  /* ---------- 4.4 Верхняя плашка и флаги страницы ---------- */
+  /* ---------- 5.5 Верхняя плашка и флаги страницы ---------- */
 
   // Страница сравнения ревизий: адрес вида .../r9196866...r9465942
   function syncPageFlag() {
@@ -693,12 +865,12 @@
     if (tabs && !tabs.querySelector(":scope > .fx-sep")) tabs.appendChild(makeSep());
   }
 
-  /* ---------- 4.5 Видео-панель над всплывающими окнами ----------
+  /* ---------- 5.6 Видео-панель над всплывающими окнами ----------
      Любое окно, налезающее на правую колонку, поднимает видео-панель выше себя:
      высота подъёма → --fx-stack, высота панели → --fx-video-h.
      Если окно слишком высокое — панель переносится влево (data-fx-video="left"). */
 
-  const IGNORE =
+  const ignoreSel = () =>
     `${S.video}, #tablist, ${S.tools}, ${S.inbox}, ${S.help}, ${S.profilePopup}, .fx-sep`;
 
   const videoStack = (() => {
@@ -719,7 +891,7 @@
     // fixed где угодно или absolute внутри дока — считаем всплывающим окном
     function consider(el, depth) {
       if (!(el instanceof HTMLElement)) return;
-      if (el.closest(IGNORE) || el.querySelector(S.video)) return;
+      if (el.closest(ignoreSel()) || el.querySelector(S.video)) return;
 
       const pos = getComputedStyle(el).position;
       const inDock = !!el.closest("#controls");
@@ -781,7 +953,7 @@
       if (shown && !panelWasShown) playEnter(panel);
       panelWasShown = shown;
 
-      const wide = window.matchMedia(`(min-width: ${G.wideMin}px)`).matches;
+      const wide = window.matchMedia(WIDE).matches;
       const videoH = panel && wide ? panel.scrollHeight : 0; // scrollHeight — без обрезки max-height
       setRootVar("--fx-video-h", videoH + "px");
 
@@ -815,12 +987,9 @@
     true
   );
 
-  /* ---------- 4.6 Окна дока: поиск по заголовку ---------- */
+  /* ---------- 5.7 Окна дока: поиск по заголовку ---------- */
 
   const EXCLUDE = "#tablist, #inbox-popup, #help-menu, #profile-popup-desktop";
-
-  const isPopupTitle = (t) =>
-    POPUP_TITLES.has(t) || (t.length < 40 && POPUP_TITLE_RE.test(t));
 
   function tagPopupFromText(textNode) {
     const title = textNode.nodeValue.trim();
@@ -856,7 +1025,17 @@
     while ((t = walker.nextNode())) tagPopupFromText(t);
   }
 
-  /* ---------- 4.7 Защита прокрутки при открытии/закрытии панелей ----------
+  /* ---------- 5.8 Окна, которые закрываются только крестиком ---------- */
+
+  function syncPinned() {
+    const open = PINNED_POPUPS.some((sel) => document.querySelector(sel));
+    const ours = root.getAttribute(PIN_ATTR) === PIN_VALUE;
+
+    if (open && !root.hasAttribute(PIN_ATTR)) root.setAttribute(PIN_ATTR, PIN_VALUE);
+    else if (!open && ours) root.removeAttribute(PIN_ATTR);
+  }
+
+  /* ---------- 5.9 Защита прокрутки при открытии/закрытии панелей ----------
      При закрытии поиска / My tabs / New tab сайт подбрасывает страницу вниз.
      Запоминаем прокрутку до открытия и возвращаем после закрытия: ~0.7 с откатываем
      скачки, пока пользователь сам ничего не крутил. */
@@ -912,15 +1091,152 @@
     return { checkPanels };
   })();
 
+  /* ---------- 5.10 Избранное в поиске ----------
+     В каждую строку поиска добавляем звёздочку. Список избранного берём тем же
+     API, что и сайт (GET /api/favorites), при каждом открытии панели;
+     клик — PUT / DELETE /api/favorites/{songId}. Без входа API отвечает 401 —
+     тогда звёздочек нет. */
+
+  const STAR_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 ' +
+    '1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
+
+  const favorites = (() => {
+    let ids = null;       // Set songId, пока панель открыта и список загружен
+    let state = "idle";   // idle → loading → ready | off
+    let generation = 0;   // ответ от прошлого открытия панели не применяем
+
+    const request = (path, method) =>
+      pageFetch(path, { method, credentials: "same-origin", headers: { Accept: "application/json" } });
+
+    async function load(gen) {
+      try {
+        const res = await request("/api/favorites", "GET");
+        if (gen !== generation) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        ids = parseFavoriteIds(await res.json());
+        if (gen !== generation) return;
+        state = "ready";
+        render();
+      } catch {
+        if (gen === generation) state = "off";
+      }
+    }
+
+    function makeStar() {
+      const star = document.createElement("span");
+      star.className = "fx-star";
+      star.setAttribute("role", "button");
+      star.setAttribute("tabindex", "0");
+      star.innerHTML = STAR_SVG;
+      return star;
+    }
+
+    function paint(star, id) {
+      const on = ids.has(id);
+      if (star.dataset.songId !== String(id)) star.dataset.songId = String(id);
+      if (star.getAttribute("aria-pressed") !== String(on)) {
+        star.setAttribute("aria-pressed", String(on));
+        star.title = on ? "Remove from My tabs" : "Add to My tabs";
+        star.setAttribute("aria-label", star.title);
+      }
+    }
+
+    function render() {
+      const panel = document.querySelector(S.searchPanel);
+      if (!panel || !ids) return;
+
+      panel.querySelectorAll("a[href]").forEach((row) => {
+        const id = parseSongId(row.getAttribute("href"));
+        let star = row.querySelector(":scope > .fx-star");
+
+        if (!id) {
+          if (star) star.remove();
+          return;
+        }
+        if (!star) {
+          star = makeStar();
+          row.appendChild(star);
+        }
+        paint(star, id);
+      });
+    }
+
+    function sync() {
+      const open = !!document.querySelector(S.searchPanel);
+
+      if (!open) {
+        if (state !== "idle") {
+          generation++;
+          ids = null;
+          state = "idle";
+        }
+        return;
+      }
+      if (state === "idle") {
+        state = "loading";
+        load(generation);
+        return;
+      }
+      if (state === "ready") render();
+    }
+
+    async function toggle(star) {
+      const id = Number(star.dataset.songId);
+      if (!ids || !id || star.getAttribute("aria-busy") === "true") return;
+
+      const add = !ids.has(id);
+      if (add) ids.add(id);
+      else ids.delete(id);
+      paint(star, id);
+      star.setAttribute("aria-busy", "true");
+
+      try {
+        const res = await request(`/api/favorites/${id}`, add ? "PUT" : "DELETE");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (e) {
+        console.warn("[Songsterr Float] не удалось изменить избранное:", e);
+        if (ids) {
+          if (add) ids.delete(id);
+          else ids.add(id);
+        }
+      } finally {
+        star.removeAttribute("aria-busy");
+        if (ids) paint(star, id);
+      }
+    }
+
+    // клик по звёздочке не должен открывать таб: ловим раньше обработчиков строки
+    function onActivate(e) {
+      const star = e.target instanceof Element ? e.target.closest(".fx-star") : null;
+      if (!star) return;
+      if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === "click" || e.type === "keydown") toggle(star);
+    }
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((type) =>
+      document.addEventListener(type, onActivate, true)
+    );
+
+    return { sync };
+  })();
+
   /* ==========================================================
-     5. ЗАПУСК
+     6. ЗАПУСК
      ========================================================== */
 
   function watchDom() {
     const pending = new Set();
     let queued = false;
-    // attributes: ["id"] — панели поиска и т.п. распознаются по id, он может смениться на месте
-    const opts = { childList: true, subtree: true, attributes: true, attributeFilter: ["id"] };
+    // id — панели поиска и т.п. распознаются по id, он может смениться на месте;
+    // href — строки поиска переиспользуются под другие песни
+    const opts = {
+      childList: true, subtree: true, attributes: true, attributeFilter: ["id", "href"],
+    };
 
     const mo = new MutationObserver((mutations) => {
       scrollGuard.checkPanels();
@@ -939,6 +1255,8 @@
       mo.disconnect();
 
       try {
+        resolveModules();
+
         let considered = 0;
 
         pending.forEach((node) => {
@@ -952,6 +1270,8 @@
 
         syncDock();
         syncTopBar();
+        syncPinned();
+        favorites.sync();
         videoStack.update();
       } finally {
         mo.observe(document.body, opts);
@@ -963,8 +1283,11 @@
 
   function init() {
     watchDom();
+    resolveModules();
     syncDock();
     syncTopBar();
+    syncPinned();
+    favorites.sync();
   }
 
   if (document.body) init();
