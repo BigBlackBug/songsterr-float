@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      4.1.1
+// @version      1.0.0
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
