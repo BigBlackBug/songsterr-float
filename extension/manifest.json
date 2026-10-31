@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Float for Songsterr (unofficial)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Unofficial layout tweak for Songsterr desktop: top pill navigation, floating bottom dock, centered panels, favorites in search.",
   "icons": {
     "16": "icons/icon16.png",

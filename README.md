@@ -36,11 +36,29 @@ Don't run it together with the userscript — the layout would be applied twice.
 
 Both builds are generated from the same `src/core.js`.
 
-## Releasing an update
+## Versioning: every commit to `main` is a release
 
-1. Bump `version` in `package.json` — the userscript manager updates only when `@version` grows.
-2. `npm run check` (rebuilds `songsterr-float.user.js` and verifies it is in sync).
-3. Commit and push to `main`.
+Installed userscripts update only when `@version` grows, so **every commit on `main` carries a new version**
+(`MAJOR.MINOR.PATCH`, set in `package.json`; the build copies it into `@version` and the extension manifest):
+
+| Change | Bump | Example |
+|---|---|---|
+| fix: Songsterr changed something, a window sits wrong, small style tweak | patch | `1.0.0 → 1.0.1` |
+| new feature: a new button, pinned window, setting | minor | `1.0.1 → 1.1.0` |
+| redesign, something removed, reinstall needed | major | `1.4.2 → 2.0.0` |
+
+Git hooks in `.githooks/` enforce it (`npm install` turns them on via `core.hooksPath`):
+
+- **pre-commit** — a commit on `main` that doesn't raise the version gets a patch bump automatically, the userscript is
+  rebuilt and everything goes into the same commit. For a minor/major release bump it yourself first:
+  `npm version minor --no-git-tag-version` (or `major`), then commit.
+- **pre-push** — refuses to push to `main` any commit whose version isn't higher than its parent's (covers fast-forward
+  merges, rebases and `--no-verify` commits).
+
+Feature branches are not touched; the version is decided when the work lands on `main` (squash-merge).
+Amending a commit on `main` bumps once more — amend with `--no-verify` if the version is already right.
+
+Before pushing: `npm run check`.
 
 ## Customize
 

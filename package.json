@@ -1,6 +1,6 @@
 {
   "name": "songsterr-float",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "license": "MIT",
   "description": "Unofficial desktop layout tweak for Songsterr: userscript + browser extension from one source",
@@ -8,7 +8,8 @@
     "build": "node build.js",
     "lint": "eslint .",
     "test": "node --test \"test/*.test.js\"",
-    "check": "npm run build && npm run lint && npm test"
+    "check": "npm run build && npm run lint && npm test",
+    "prepare": "node scripts/version-guard.js install"
   },
   "config": {
     "repo": "BigBlackBug/songsterr-float"
