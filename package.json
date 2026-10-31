@@ -1,6 +1,6 @@
 {
   "name": "songsterr-float",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "private": true,
   "license": "MIT",
   "description": "Unofficial desktop layout tweak for Songsterr: userscript + browser extension from one source",
@@ -11,7 +11,7 @@
     "check": "npm run build && npm run lint && npm test"
   },
   "config": {
-    "repo": "lockiF/songsterr-float"
+    "repo": "BigBlackBug/songsterr-float"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

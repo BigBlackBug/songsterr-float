@@ -16,18 +16,31 @@ favorites API (`/api/favorites`), on songsterr.com, with your existing session �
 *My tabs* and to change that when you click a star. Logged out, no stars are shown.
 
 > Unofficial. Not affiliated with or endorsed by Songsterr. All trademarks belong to their owners.
+> Fork of [lockiF/songsterr-float](https://github.com/lockiF/songsterr-float).
 
 ## Install
 
-### As a browser extension
-- **Chrome / Edge / Brave:** download `songsterr-float-extension-vX.Y.Z.zip` from [Releases](https://github.com/lockiF/songsterr-float/releases), unzip, open `chrome://extensions`, enable *Developer mode* → *Load unpacked* → pick the folder.
-- **Firefox:** (store link here once published). Until then: `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → pick `manifest.json` (temporary, removed on restart).
-
-### As a userscript
+### As a userscript — updates itself
 Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/), then open
-[`songsterr-float.user.js`](https://github.com/lockiF/songsterr-float/raw/main/songsterr-float.user.js) and click *Install*.
+[`songsterr-float.user.js`](https://github.com/BigBlackBug/songsterr-float/raw/main/songsterr-float.user.js) and click *Install*.
+
+The script's `@updateURL` points at that same file on `main`, so the manager picks up every new version on its own
+(Tampermonkey checks about once a day; *Utilities → Check for userscript updates* forces it).
+
+### As a browser extension — manual updates
+An unpacked extension never updates itself; Chrome allows self-updating extensions only from the Web Store.
+Don't run it together with the userscript — the layout would be applied twice.
+
+- **Chrome / Edge / Brave:** `npm install && npm run build`, open `chrome://extensions`, enable *Developer mode* → *Load unpacked* → pick `dist/extension` (not `extension/` — that is the source without `content.js`). To update: `git pull && npm run build`, then ↻ on the extension card.
+- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → pick `dist/extension/manifest.json` (temporary, removed on restart).
 
 Both builds are generated from the same `src/core.js`.
+
+## Releasing an update
+
+1. Bump `version` in `package.json` — the userscript manager updates only when `@version` grows.
+2. `npm run check` (rebuilds `songsterr-float.user.js` and verifies it is in sync).
+3. Commit and push to `main`.
 
 ## Customize
 
@@ -46,7 +59,7 @@ The top pill is arranged by menu item ids (`#menu-search`, `#bottombar-help`), n
 ## Known limitations
 
 - If Songsterr renames a class (not just re-hashes it), that part of the layout falls back to the site's own style until
-  `CLASSES` / `MODULES` in `src/core.js` are updated. Please [open an issue](https://github.com/lockiF/songsterr-float/issues) with a screenshot.
+  `CLASSES` / `MODULES` in `src/core.js` are updated. Please [open an issue](https://github.com/BigBlackBug/songsterr-float/issues) with a screenshot.
 - A star changed in search updates Songsterr's servers, but a page that already loaded your favorites (e.g. the star on
   an open tab) shows the old state until it reloads.
 - Desktop only; designed for wide windows (the video panel moves to the right column from 1811px).

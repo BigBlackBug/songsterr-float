@@ -114,3 +114,12 @@ test("userscript собран из текущего src/core.js (node build.js)"
   assert.ok(user.endsWith(src), "songsterr-float.user.js устарел — запусти node build.js");
   assert.match(user, new RegExp(`@version\\s+${pkg.version.replace(/\./g, "\\.")}\\n`));
 });
+
+test("автообновление userscript смотрит в репо из package.json", () => {
+  const user = fs.readFileSync(path.join(__dirname, "..", "songsterr-float.user.js"), "utf8");
+  const { repo } = require("../package.json").config;
+  const raw = `https://raw.githubusercontent.com/${repo}/main/songsterr-float.user.js`;
+  assert.match(user, new RegExp(`@updateURL\\s+${raw.replace(/[.]/g, "\\.")}\\n`));
+  assert.match(user, new RegExp(`@downloadURL\\s+${raw.replace(/[.]/g, "\\.")}\\n`));
+  assert.match(user, /@grant\s+none\n/);
+});

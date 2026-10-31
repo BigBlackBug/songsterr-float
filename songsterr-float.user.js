@@ -1,15 +1,16 @@
 // ==UserScript==
 // @name         Songsterr Float
-// @namespace    https://github.com/lockiF/songsterr-float
-// @version      4.1.0
+// @namespace    https://github.com/BigBlackBug/songsterr-float
+// @version      4.1.1
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
 // @run-at       document-start
-// @homepageURL  https://github.com/lockiF/songsterr-float
-// @supportURL   https://github.com/lockiF/songsterr-float/issues
-// @updateURL    https://raw.githubusercontent.com/lockiF/songsterr-float/main/songsterr-float.user.js
-// @downloadURL  https://raw.githubusercontent.com/lockiF/songsterr-float/main/songsterr-float.user.js
+// @grant        none
+// @homepageURL  https://github.com/BigBlackBug/songsterr-float
+// @supportURL   https://github.com/BigBlackBug/songsterr-float/issues
+// @updateURL    https://raw.githubusercontent.com/BigBlackBug/songsterr-float/main/songsterr-float.user.js
+// @downloadURL  https://raw.githubusercontent.com/BigBlackBug/songsterr-float/main/songsterr-float.user.js
 // ==/UserScript==
 
 /*

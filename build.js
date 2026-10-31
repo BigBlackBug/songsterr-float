@@ -23,6 +23,7 @@ const meta = [
   ["match", "https://www.songsterr.com/*"],
   ["match", "https://songsterr.com/*"],
   ["run-at", "document-start"],
+  ["grant", "none"], // в контексте страницы: стили — обычным <style>, fetch — с cookies сайта
 ];
 
 if (hasRepo) {
