@@ -4,8 +4,8 @@ Not happy with the new Songsterr desktop layout? This restores a cleaner, more c
 
 - one floating **top pill** with navigation (Search · My tabs · New tab · For teachers | Inbox · Help · profile)
 - floating **bottom dock** with player controls, grouped with dividers
-- **tools pill** (play, original/synth, loop, speed…) in the left column
-- mixer / transpose / settings / revisions windows in a tidy right column — above the dock on narrower windows, never under it
+- **tools pill** (favorite, display mode, editor…) left of the dock, shrinking to fit the space up to it; on windows too narrow for that it sits above the dock
+- mixer / transpose / settings / revisions / download windows in a tidy right column — above the dock on narrower windows, never under it
 - the "original audio" video panel stacks above those windows instead of covering them
 - the **speed (BPM) window stays open** when you click the tab — close it with its ✕ (or Esc)
 - a **☆ star on every search result** to add it to / remove it from *My tabs* without opening the tab

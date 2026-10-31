@@ -1,6 +1,6 @@
 {
   "name": "songsterr-float",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "license": "MIT",
   "description": "Unofficial desktop layout tweak for Songsterr: userscript + browser extension from one source",

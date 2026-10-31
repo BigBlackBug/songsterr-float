@@ -165,3 +165,19 @@ test("смена хэша на сайте: классы находятся за�
   assert.match(css, /#controls \.NEWdck_controls \{/);
   assert.doesNotMatch(css, /idrtTa_controls \{/);
 });
+
+test("окно из слоя попапов дока (Download) встаёт как окно дока — над доком", async () => {
+  const { window, document } = setup('<div class="idrtTa_viewportHost idrtTa_popupsLayer"></div>');
+  const rect = window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    return this.style.position === "fixed" ? { ...rect.call(this), width: 360 } : rect.call(this);
+  };
+  await settle(window);
+
+  document.querySelector(".idrtTa_popupsLayer").innerHTML =
+    '<div><div class="NxM00W_root" style="position: fixed"><div role="dialog">Choose file format</div></div></div>';
+  await settle(window);
+
+  assert.equal(document.querySelector(".NxM00W_root").getAttribute("data-fixpopup"), "1");
+  assert.equal(document.querySelector("[role=dialog]").hasAttribute("data-fixpopup"), false);
+});

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      1.0.1
+// @version      1.0.2
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
@@ -44,6 +44,7 @@
     panelGap: 12,
     barWidth: 1000,
     sideWidth: 380,        // ширина правой колонки (микшер, настройки, видео)
+    toolsMin: 270,         // самая узкая плашка инструментов: селект «Tab» сжат до упора
     btnSize: 48,
     dockInset: 6,          // отступ дока со всех сторон
     dockBottom: 12,
@@ -63,6 +64,8 @@
     animMs: 180,
   };
   const CONTENT_TOP = G.pillOffset + G.pillHeight + G.panelGap;
+  // от этой ширины плашка инструментов влезает в строку слева от дока
+  const SIDE_MIN = 2 * G.pillOffset + G.toolsMin + G.panelGap + G.barWidth;
 
   const Z = { dock: 900, video: 940, popupWindow: 950, tabs: 1000, panels: 1001, popup: 1100 };
 
@@ -87,10 +90,13 @@
     navItem: ["nav", "item"],
     navText: ["nav", "text"],
     toolsRow: ["tools", "controlsTopPanelRow"],
+    toolsPanel: ["tools", "controlsTopPanel"],
+    toolsSelect: ["tools", "controlsTopItemSel"],
     dockBar: ["dock", "controls"],
     dockCard: ["dock", "controlsCard"],
     dockItem: ["dock", "item"],
     dockSettings: ["dock", "settings"],
+    popupsLayer: ["dock", "popupsLayer"],
     video: ["video", "panel"],
     revisionDate: ["badge", "date"],
     fancyBox: ["fancy", "container"],
@@ -168,6 +174,8 @@
   const media = (query, ...rules) => `@media ${query} {\n${rules.join("\n")}}\n`;
   const WIDE = `(min-width: ${G.wideMin}px)`;
   const NARROW = `(max-width: ${G.wideMin - 1}px)`;
+  const SIDE = `(min-width: ${SIDE_MIN}px)`;
+  const NO_SIDE = `(max-width: ${SIDE_MIN - 1}px)`;
 
   const tokens = () => `:root {
   --pill-bg: ${G.pillBg};
@@ -193,6 +201,7 @@
   --help-menu-bottom: ${G.helpMenuBottom}px;
   --profile-popup-bottom: ${G.profilePopupBottom}px;
   --star-size: ${G.starSize}px;
+  --tools-min: ${G.toolsMin}px;
 
   /* производные */
   --dock-height: calc(var(--btn-size) + 2 * var(--dock-inset));
@@ -200,6 +209,9 @@
   --btn-radius: calc(var(--dock-radius) - var(--dock-inset));
   --content-top: calc(var(--pill-offset) + var(--pill-height) + var(--panel-gap));
   --panel-bottom: calc(var(--dock-bottom) + var(--dock-height) + var(--panel-gap));
+  /* плашка инструментов слева от дока: всё место до него, но не уже --tools-min */
+  --tools-width: clamp(var(--tools-min),
+    calc((100vw - var(--dock-width)) / 2 - var(--pill-offset) - var(--panel-gap)), var(--left-width));
 }
 `;
 
@@ -345,6 +357,10 @@
     rule(`${S.bar}[data-fx-edit]`, {
       justifyContent: "space-between", columnGap: "var(--dock-col-gap)",
     }),
+    // плашка инструментов не помещается слева от дока по центру — док сдвигается вправо
+    media(SIDE, rule(`body:has(${S.tools}) ${S.dock}`, {
+      left: "max(calc(50% - var(--dock-width) / 2), calc(var(--pill-offset) + var(--tools-width) + var(--panel-gap)))",
+    })),
     rule(`${S.bar}[data-fx-edit] > .fx-sep`, { margin: 0 }),
     rule(`${S.bar}[data-fx-edit]::after`, {
       content: '""', order: 0, flex: "0 0 calc(100% - 24px)", height: "1px",
@@ -362,7 +378,7 @@
       display: "flex", boxSizing: "border-box", pointerEvents: "auto",
       background: "none", border: "none", boxShadow: "none", borderRadius: 0, zIndex: Z.dock,
     }),
-    rule(`${S.tools} > :only-child, #controls ${S.tools} > :only-child`, {
+    rule(`${S.toolsPanel}, #controls ${S.toolsPanel}`, {
       flex: "1 1 auto", width: "100%", height: "100%", minHeight: 0, margin: 0,
       padding: "var(--dock-inset)",
       display: "flex", flexWrap: "nowrap", alignItems: "center", justifyContent: "space-between",
@@ -371,9 +387,13 @@
       borderRadius: "var(--dock-radius)", boxShadow: "var(--pill-shadow)",
     }),
     rule(`${S.tools} #c-play`, { margin: 0 }),
-    rule(`${S.tools} > :only-child > button`, { borderRadius: "var(--btn-radius)" }),
-    // на узких экранах правая колонка занята — плашка инструментов над доком
-    media(NARROW, rule(S.tools, { bottom: "var(--panel-bottom)" })),
+    rule(`${S.toolsPanel} > button`, { borderRadius: "var(--btn-radius)" }),
+    // селект «Tab / Sheet» отдаёт ширину, когда плашка сжимается до --tools-min
+    rule(`${S.tools} ${D.toolsSelect}`, { flexShrink: 1, minWidth: 0 }),
+    // в строке с доком плашка занимает место от края до дока
+    media(SIDE, rule(S.tools, { width: "var(--tools-width)" })),
+    // места слева от дока нет — плашка над доком
+    media(NO_SIDE, rule(S.tools, { bottom: "var(--panel-bottom)" })),
   ].join("\n");
 
   /* Видео-панель («оригинальное аудио»): справа над окнами микшера и т.д.
@@ -410,7 +430,8 @@
     ),
   ].join("\n");
 
-  /* Окна микшера, транспонирования, настроек, ревизий (помечает JS: data-fixpopup).
+  /* Окна микшера, транспонирования, настроек, ревизий, Download и прочие окна
+     из слоя попапов дока (помечает JS: data-fixpopup).
      Они живут в слое попапов сайта (position: fixed; z-index ниже дока), поэтому
      поднять их над доком через z-index нельзя — только не пересекаться с ним. */
   const popupsCss = () => [
@@ -510,6 +531,8 @@
       dock: "#controls",
       bar: `#controls ${D.dockBar}`,
       tools: `${D.toolsRow}`,
+      // без входа рядом с плашкой лежит скрытый бургер — :only-child не срабатывает
+      toolsPanel: `${D.toolsRow} > :is(:only-child, ${D.toolsPanel})`,
       video: `${D.video}`,
       popup: "[data-fixpopup]",
       revisions: '[data-fixpopup="revisions"]',
@@ -1021,10 +1044,31 @@
       const w = el.getBoundingClientRect().width;
       if (w < POPUP.titleMinW || w > POPUP.titleMaxW) continue;
 
-      if (!el.hasAttribute("data-fixpopup")) playEnter(el);
-      el.setAttribute("data-fixpopup", REVISION_TITLES.has(title) ? "revisions" : "1");
-      videoStack.track(el);
+      tagPopup(el, REVISION_TITLES.has(title) ? "revisions" : "1");
       return;
+    }
+  }
+
+  function tagPopup(el, kind) {
+    if (!el.hasAttribute("data-fixpopup")) playEnter(el);
+    if (el.getAttribute("data-fixpopup") !== "revisions") el.setAttribute("data-fixpopup", kind);
+    videoStack.track(el);
+  }
+
+  /* Окна без известного заголовка (Download, «Get … Plus» и т.п.) сайт открывает
+     в своём слое попапов дока. Внешний fixed-блок шириной с окно — тоже окно дока. */
+  function tagLayerPopups(el = null, depth = 0) {
+    if (!el) {
+      document.querySelectorAll(D.popupsLayer).forEach((layer) => tagLayerPopups(layer, 0));
+      return;
+    }
+    for (const child of el.children) {
+      const w = child.getBoundingClientRect().width;
+      if (getComputedStyle(child).position === "fixed" && w >= POPUP.minW && w <= POPUP.titleMaxW) {
+        tagPopup(child, "1");
+      } else if (depth < POPUP.maxDepth) {
+        tagLayerPopups(child, depth + 1);
+      }
     }
   }
 
@@ -1283,6 +1327,7 @@
         });
         pending.clear();
 
+        tagLayerPopups();
         syncDock();
         syncTopBar();
         syncPinned();

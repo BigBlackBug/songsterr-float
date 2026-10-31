@@ -27,6 +27,16 @@ test("на узком экране окна дока стоят над доко�
   assert.match(narrow, /\[data-fixpopup\][^{]*\{[^}]*bottom: var\(--panel-bottom\)/);
 });
 
+test("плашка инструментов: в строке с доком от края до дока, иначе — над доком", () => {
+  const css = core.buildCss();
+  const side = 2 * core.G.pillOffset + core.G.toolsMin + core.G.panelGap + core.G.barWidth;
+  assert.match(css, new RegExp(`@media \\(min-width: ${side}px\\) \\{\\n\\._5pcfpW_controlsTopPanelRow \\{[^}]*width: var\\(--tools-width\\)`));
+  assert.match(css, new RegExp(`@media \\(max-width: ${side - 1}px\\) \\{\\n\\._5pcfpW_controlsTopPanelRow \\{[^}]*bottom: var\\(--panel-bottom\\)`));
+  assert.match(css, /body:has\(\._5pcfpW_controlsTopPanelRow\) #controls \{[^}]*left: max\(/);
+  // фон плашки — и когда рядом лежит скрытый бургер (без входа)
+  assert.match(css, /\._5pcfpW_controlsTopPanelRow > :is\(:only-child, \._5pcfpW_controlsTopPanel\)[^{]*\{[^}]*background: var\(--pill-bg\)/);
+});
+
 test("escapeClass экранирует только ведущую цифру", () => {
   assert.equal(core.escapeClass("_0meAjW_item"), "_0meAjW_item");
   assert.equal(core.escapeClass("idrtTa_controls"), "idrtTa_controls");
