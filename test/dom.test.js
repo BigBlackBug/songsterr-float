@@ -9,7 +9,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const CODE = fs.readFileSync(path.join(__dirname, "..", "src", "core.js"), "utf8");
 
-function setup(body, routes = {}) {
+function setup(body, routes = {}, prepare = () => {}) {
   const dom = new JSDOM(`<!doctype html><html><head></head><body>${body}</body></html>`, {
     url: "https://www.songsterr.com/a/wsa/song-tab-s1",
     pretendToBeVisual: true,
@@ -27,6 +27,7 @@ function setup(body, routes = {}) {
     return { ok: status >= 200 && status < 300, status, json: async () => json };
   };
 
+  prepare(window);
   window.eval(CODE);
   return { window, document: window.document, calls };
 }
@@ -180,4 +181,66 @@ test("окно из слоя попапов дока (Download) встаёт к�
 
   assert.equal(document.querySelector(".NxM00W_root").getAttribute("data-fixpopup"), "1");
   assert.equal(document.querySelector("[role=dialog]").hasAttribute("data-fixpopup"), false);
+});
+
+// Кнопка скорости в разметке сайта и подмена Resource Timing: entries — уже загруженные
+// ресурсы, emit(url) — новый ресурс через PerformanceObserver
+const SPEED = (label) => `
+  <div id="c-speed"><button id="control-speed" aria-label="${label}"><div class="x_speed">
+    <svg class="x_icon"><use href="/static/controls-sprite.svg#speed"></use></svg><text>${label}</text>
+  </div></button></div>`;
+const PART = (song, rev) => `https://cdn.example.net/${song}/${rev}/v0-abc/0.json`;
+
+function withTiming(entries) {
+  const timing = {};
+  timing.prepare = (window) => {
+    window.performance.getEntriesByType = (type) => (type === "resource" ? entries.map((name) => ({ name })) : []);
+    window.PerformanceObserver = class {
+      constructor(cb) { timing.emit = (name) => cb({ getEntries: () => [{ name }] }); }
+      observe() {}
+    };
+  };
+  return timing;
+}
+
+test("кнопка скорости: темп из JSON партии с учётом скорости", async () => {
+  const timing = withTiming([PART(1, 10)]);
+  const { window, document, calls } = setup(
+    SPEED("Speed 100%"),
+    { [`GET ${PART(1, 10)}`]: { json: { automations: { tempo: [{ measure: 0, position: 0, bpm: 123, type: 4 }] } } } },
+    timing.prepare
+  );
+  await settle(window);
+
+  const box = document.querySelector("#control-speed .x_speed");
+  assert.equal(box.getAttribute("data-fx-bpm"), "123");
+  assert.deepEqual(calls, [`GET ${PART(1, 10)}`]);
+
+  document.getElementById("control-speed").setAttribute("aria-label", "Speed 50%");
+  await settle(window);
+  assert.equal(box.getAttribute("data-fx-bpm"), "62");
+
+  // повторная загрузка той же ревизии JSON заново не читает
+  timing.emit(PART(1, 10));
+  await settle(window);
+  assert.equal(calls.length, 1);
+});
+
+test("кнопка скорости: чужая песня или нет темпа — остаётся иконка", async () => {
+  const timing = withTiming([PART(2, 20)]);
+  const { window, document } = setup(
+    SPEED("Speed 100%"),
+    {
+      [`GET ${PART(2, 20)}`]: { json: { automations: { tempo: [{ bpm: 90 }] } } },
+      [`GET ${PART(1, 11)}`]: { json: { automations: {} } },
+    },
+    timing.prepare
+  );
+  await settle(window);
+  const box = document.querySelector("#control-speed .x_speed");
+  assert.equal(box.hasAttribute("data-fx-bpm"), false, "JSON от песни 2, а открыта песня 1");
+
+  timing.emit(PART(1, 11));
+  await settle(window);
+  assert.equal(box.hasAttribute("data-fx-bpm"), false);
 });

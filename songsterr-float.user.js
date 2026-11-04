@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      1.0.2
+// @version      1.1.0
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
@@ -20,7 +20,7 @@
  *   3. ЧИСТЫЕ ФУНКЦИИ — без DOM; их же проверяют тесты (test/*.test.js)
  *   4. УТИЛИТЫ
  *   5. ФУНКЦИИ       — classNames, dock, topBar, logo, videoStack, popups, pinned,
- *                      scrollGuard, favorites
+ *                      scrollGuard, favorites, bpm
  *   6. ЗАПУСК        — один MutationObserver, который вызывает функции по порядку
  *
  * Сайт собран из CSS-модулей: класс = «хэш модуля» + «_» + «имя», например
@@ -155,6 +155,12 @@
   };
 
   const RESOLVE_EVERY_MS = 2000; // как часто можно искать новые хэши модулей
+
+  /* BPM на кнопке скорости: вместо иконки-человечка — темп с учётом скорости.
+     Иконку узнаём по фрагменту спрайта (имя файла спрайта меняется с деплоем). */
+  const SPEED_BTN = "#control-speed";
+  const SPEED_ICON = 'svg:has(> use[href$="#speed"])';
+  const BPM_ATTR = "data-fx-bpm";
 
   /* ==========================================================
      2. СТИЛИ
@@ -465,6 +471,15 @@
     ),
   ].join("\n");
 
+  // Кнопка скорости: темп текстом на месте иконки (значение ставит bpm.sync)
+  const bpmCss = () => [
+    rule(`${SPEED_BTN} [${BPM_ATTR}] > ${SPEED_ICON}`, { display: "none" }),
+    rule(`${SPEED_BTN} [${BPM_ATTR}]::before`, {
+      content: `attr(${BPM_ATTR})`, display: "block", height: "17px",
+      fontSize: "15px", fontWeight: 600, lineHeight: "17px", fontVariantNumeric: "tabular-nums",
+    }),
+  ].join("\n");
+
   // Мелкие правки: логотип, баннер ревизий, декоративная линия, страница diff
   const miscCss = () => [
     // вид логотипа родной, меняется только top (центр совпадает с центром плашки);
@@ -547,7 +562,7 @@
 
   const buildCss = () => [
     tokens(), topBarCss(), panelsCss(), dockCss(), toolsCss(),
-    videoCss(), popupsCss(), miscCss(), favoritesCss(), animationsCss(),
+    videoCss(), popupsCss(), bpmCss(), miscCss(), favoritesCss(), animationsCss(),
   ].join("\n");
 
   /* Новый хэш модуля по классам, найденным на странице.
@@ -604,10 +619,35 @@
     );
   }
 
+  // JSON партии с CDN: …/{songId}/{revisionId}/{image}/{n}.json → { song, revision } | null
+  function parsePartUrl(url) {
+    const m = /\/(\d+)\/(\d+)\/[^/]+\/\d+\.json(?:[?#].*)?$/.exec(url || "");
+    return m && !/\/api\//.test(url) ? { song: Number(m[1]), revision: Number(m[2]) } : null;
+  }
+
+  // Темп в начале песни из JSON партии: automations.tempo — точки { measure, position, bpm }
+  function parseBaseBpm(part) {
+    const list = part && part.automations && Array.isArray(part.automations.tempo)
+      ? part.automations.tempo : [];
+    const first = list
+      .filter((t) => t && Number(t.bpm) > 0)
+      .sort((a, b) => (a.measure || 0) - (b.measure || 0) || (a.position || 0) - (b.position || 0))[0];
+    return first ? Number(first.bpm) : null;
+  }
+
+  // aria-label кнопки скорости («Speed 75%») → 75
+  function parseSpeed(label) {
+    const m = /(\d+(?:[.,]\d+)?)\s*%/.exec(label || "");
+    return m ? Number(m[1].replace(",", ".")) : null;
+  }
+
+  // Темп при данной скорости, целым числом
+  const bpmAtSpeed = (base, speed) => Math.round((base * speed) / 100);
+
   const API = {
     G, MODULES, CLASSES, C, D, S, PINNED_POPUPS, PIN_ATTR, PIN_VALUE,
     rule, escapeClass, refreshNames, buildCss, findModuleHash, planEditLayout,
-    isPopupTitle, parseSongId, parseFavoriteIds,
+    isPopupTitle, parseSongId, parseFavoriteIds, parsePartUrl, parseBaseBpm, parseSpeed, bpmAtSpeed,
   };
 
   // Без DOM (node, тесты) — только отдаём чистые функции
@@ -1284,6 +1324,69 @@
     return { sync };
   })();
 
+  /* ---------- 5.11 BPM на кнопке скорости ----------
+     Сайт грузит JSON партий с CDN; ловим их адреса через Resource Timing и читаем
+     ещё раз (браузер отдаёт из кэша) — оттуда базовый темп. Скорость берём из
+     aria-label кнопки. Темп неизвестен — остаётся родная иконка. */
+
+  const bpm = (() => {
+    const songs = new Map(); // songId → { revision, base } (base null, пока грузится)
+
+    async function load(url, part) {
+      songs.set(part.song, { revision: part.revision, base: null });
+      let base = null;
+      try {
+        const res = await pageFetch(url);
+        if (res.ok) base = parseBaseBpm(await res.json());
+      } catch {
+        // нет темпа — нет и числа на кнопке
+      }
+      const cur = songs.get(part.song);
+      if (!cur || cur.revision !== part.revision) return; // уже пришла другая ревизия
+      if (base) {
+        cur.base = base;
+        sync();
+      } else {
+        songs.delete(part.song);
+      }
+    }
+
+    function consider(url) {
+      const part = parsePartUrl(url);
+      if (!part) return;
+      const known = songs.get(part.song);
+      if (known && known.revision === part.revision) return;
+      load(url, part);
+    }
+
+    function sync() {
+      const btn = document.querySelector(SPEED_BTN);
+      const icon = btn && btn.querySelector(SPEED_ICON);
+      const box = icon && icon.parentElement;
+      if (!box) return;
+
+      const song = songs.get(parseSongId(location.pathname));
+      const speed = parseSpeed(btn.getAttribute("aria-label"));
+      const value = song && song.base && speed ? String(bpmAtSpeed(song.base, speed)) : null;
+
+      if (value === null) box.removeAttribute(BPM_ATTR);
+      else if (box.getAttribute(BPM_ATTR) !== value) box.setAttribute(BPM_ATTR, value);
+    }
+
+    try {
+      performance.getEntriesByType("resource").forEach((e) => consider(e.name));
+      if (typeof PerformanceObserver === "function") {
+        // буфер Resource Timing ограничен (реклама его быстро забивает) — observer видит всё
+        new PerformanceObserver((list) => list.getEntries().forEach((e) => consider(e.name)))
+          .observe({ type: "resource" });
+      }
+    } catch {
+      // нет Resource Timing — кнопка остаётся родной
+    }
+
+    return { sync };
+  })();
+
   /* ==========================================================
      6. ЗАПУСК
      ========================================================== */
@@ -1292,9 +1395,10 @@
     const pending = new Set();
     let queued = false;
     // id — панели поиска и т.п. распознаются по id, он может смениться на месте;
-    // href — строки поиска переиспользуются под другие песни
+    // href — строки поиска переиспользуются под другие песни;
+    // aria-label — в нём кнопка скорости сообщает текущую скорость
     const opts = {
-      childList: true, subtree: true, attributes: true, attributeFilter: ["id", "href"],
+      childList: true, subtree: true, attributes: true, attributeFilter: ["id", "href", "aria-label"],
     };
 
     const mo = new MutationObserver((mutations) => {
@@ -1332,6 +1436,7 @@
         syncTopBar();
         syncPinned();
         favorites.sync();
+        bpm.sync();
         videoStack.update();
       } finally {
         mo.observe(document.body, opts);
@@ -1348,6 +1453,7 @@
     syncTopBar();
     syncPinned();
     favorites.sync();
+    bpm.sync();
   }
 
   if (document.body) init();

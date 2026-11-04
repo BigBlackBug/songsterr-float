@@ -133,3 +133,22 @@ test("автообновление userscript смотрит в репо из pa
   assert.match(user, new RegExp(`@downloadURL\\s+${raw.replace(/[.]/g, "\\.")}\\n`));
   assert.match(user, /@grant\s+none\n/);
 });
+
+test("BPM: адрес JSON партии, базовый темп, скорость", () => {
+  assert.deepEqual(
+    core.parsePartUrl("https://dqsljvtekg760.cloudfront.net/19/10176590/v0-3-2-XiKCEsImE2PPybWf/0.json"),
+    { song: 19, revision: 10176590 }
+  );
+  assert.equal(core.parsePartUrl("https://www.songsterr.com/api/video-points/19/10176590/list"), null);
+  assert.equal(core.parsePartUrl("https://www.songsterr.com/api/meta/19/10/x/1.json"), null);
+
+  const tempo = [{ measure: 8, position: 0, bpm: 140 }, { measure: 0, position: 0, bpm: 123, type: 4 }];
+  assert.equal(core.parseBaseBpm({ automations: { tempo } }), 123);
+  assert.equal(core.parseBaseBpm({ automations: {} }), null);
+  assert.equal(core.parseBaseBpm(null), null);
+
+  assert.equal(core.parseSpeed("Speed 100%"), 100);
+  assert.equal(core.parseSpeed("Скорость 72,5 %"), 72.5);
+  assert.equal(core.parseSpeed("Speed"), null);
+  assert.equal(core.bpmAtSpeed(123, 50), 62);
+});

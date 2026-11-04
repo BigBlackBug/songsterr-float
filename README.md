@@ -7,13 +7,15 @@ Not happy with the new Songsterr desktop layout? This restores a cleaner, more c
 - **tools pill** (favorite, display mode, editor…) left of the dock, shrinking to fit the space up to it; on windows too narrow for that it sits above the dock
 - mixer / transpose / settings / revisions / download windows in a tidy right column — above the dock on narrower windows, never under it
 - the "original audio" video panel stacks above those windows instead of covering them
+- the **speed button shows the tempo in BPM** (the song's starting tempo × the current speed) instead of the runner icon
 - the **speed (BPM) window stays open** when you click the tab — close it with its ✕ (or Esc)
 - a **☆ star on every search result** to add it to / remove it from *My tabs* without opening the tab
 - centered search / My tabs / New tab panels, consistent rounded corners, subtle fade-in animations
 
 It does **not** collect data or talk to anyone but Songsterr. The only network requests it makes are Songsterr's own
 favorites API (`/api/favorites`), on songsterr.com, with your existing session — to show which search results are in
-*My tabs* and to change that when you click a star. Logged out, no stars are shown.
+*My tabs* and to change that when you click a star (logged out, no stars are shown) — and a re-read of the tab's part
+JSON the page has just loaded from Songsterr's CDN (normally served from the browser cache), for the starting tempo.
 
 > Unofficial. Not affiliated with or endorsed by Songsterr. All trademarks belong to their owners.
 > Fork of [lockiF/songsterr-float](https://github.com/lockiF/songsterr-float).
