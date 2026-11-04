@@ -152,3 +152,8 @@ test("BPM: адрес JSON партии, базовый темп, скорост
   assert.equal(core.parseSpeed("Speed"), null);
   assert.equal(core.bpmAtSpeed(123, 50), 62);
 });
+
+test("видео-панель на узком экране — не шире половины дока, по центру", () => {
+  const css = core.buildCss();
+  assert.match(css, /@media \(max-width: 1810px\) \{\n\.oCvYpa_panel \{[^}]*max-width: 50% !important;[^}]*margin: 0 auto/);
+});

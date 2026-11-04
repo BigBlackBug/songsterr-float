@@ -6,7 +6,8 @@ Not happy with the new Songsterr desktop layout? This restores a cleaner, more c
 - floating **bottom dock** with player controls, grouped with dividers
 - **tools pill** (favorite, display mode, editor…) left of the dock, shrinking to fit the space up to it; on windows too narrow for that it sits above the dock
 - mixer / transpose / settings / revisions / download windows in a tidy right column — above the dock on narrower windows, never under it
-- the "original audio" video panel stacks above those windows instead of covering them
+- the "original audio" video panel stacks above those windows instead of covering them; on narrower windows it sits
+  above the dock, centered, at most half the dock's width
 - the **speed button shows the tempo in BPM** (the song's starting tempo × the current speed) instead of the runner icon
 - the **speed (BPM) window stays open** when you click the tab — close it with its ✕ (or Esc)
 - a **☆ star on every search result** to add it to / remove it from *My tabs* without opening the tab

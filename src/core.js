@@ -396,6 +396,9 @@
       background: "var(--pill-bg)", borderRadius: "var(--dock-radius)",
       boxShadow: "var(--pill-shadow)", boxSizing: "border-box",
     }),
+    // узкий экран: панель в доке над кнопками — не шире половины дока, по центру
+    // (слева плашка инструментов, справа окна дока)
+    media(NARROW, rule(S.video, { maxWidth: "50%", margin: "0 auto" })),
     media(
       WIDE,
       rule(S.video, {

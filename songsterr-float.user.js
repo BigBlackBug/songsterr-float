@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      1.1.0
+// @version      1.1.1
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
@@ -411,6 +411,9 @@
       background: "var(--pill-bg)", borderRadius: "var(--dock-radius)",
       boxShadow: "var(--pill-shadow)", boxSizing: "border-box",
     }),
+    // узкий экран: панель в доке над кнопками — не шире половины дока, по центру
+    // (слева плашка инструментов, справа окна дока)
+    media(NARROW, rule(S.video, { maxWidth: "50%", margin: "0 auto" })),
     media(
       WIDE,
       rule(S.video, {
