@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      1.1.1
+// @version      1.1.2
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
@@ -474,11 +474,14 @@
     ),
   ].join("\n");
 
-  // Кнопка скорости: темп текстом на месте иконки (значение ставит bpm.sync)
+  /* Кнопка скорости: темп текстом на месте иконки (значение ставит bpm.sync).
+     Колонка кнопки — space-between, поэтому число занимает всё место над плашкой
+     «100%» и стоит в нём по центру. */
   const bpmCss = () => [
     rule(`${SPEED_BTN} [${BPM_ATTR}] > ${SPEED_ICON}`, { display: "none" }),
     rule(`${SPEED_BTN} [${BPM_ATTR}]::before`, {
-      content: `attr(${BPM_ATTR})`, display: "block", height: "17px",
+      content: `attr(${BPM_ATTR})`, flex: "1 1 auto", height: "auto",
+      display: "flex", alignItems: "center", justifyContent: "center",
       fontSize: "15px", fontWeight: 600, lineHeight: "17px", fontVariantNumeric: "tabular-nums",
     }),
   ].join("\n");

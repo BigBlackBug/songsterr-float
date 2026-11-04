@@ -157,3 +157,8 @@ test("видео-панель на узком экране — не шире п�
   const css = core.buildCss();
   assert.match(css, /@media \(max-width: 1810px\) \{\n\.oCvYpa_panel \{[^}]*max-width: 50% !important;[^}]*margin: 0 auto/);
 });
+
+test("BPM на кнопке скорости по центру места над плашкой скорости", () => {
+  const css = core.buildCss();
+  assert.match(css, /#control-speed \[data-fx-bpm\]::before \{[^}]*flex: 1 1 auto[^}]*align-items: center/);
+});
