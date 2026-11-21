@@ -9,6 +9,8 @@ Not happy with the new Songsterr desktop layout? This restores a cleaner, more c
 - the "original audio" video panel stacks above those windows instead of covering them; on narrower windows it sits
   above the dock, centered, at most half the dock's width
 - the **speed button shows the tempo in BPM** (the song's starting tempo × the current speed) instead of the runner icon
+- a **tab size button** (`100%`) in the dock next to Settings: click for a smaller tab — more measures per line and
+  more lines on screen (100 → 90 → 80 → 70 → 60 → 100%), Shift+click for a larger one; remembered across tabs
 - the **speed (BPM) window stays open** when you click the tab — close it with its ✕ (or Esc)
 - a **☆ star on every search result** to add it to / remove it from *My tabs* without opening the tab
 - centered search / My tabs / New tab panels, consistent rounded corners, subtle fade-in animations
@@ -66,7 +68,7 @@ Before pushing: `npm run check`.
 ## Customize
 
 Open `src/core.js` and edit the `G` object at the top (pill height, offsets, radius, widths…), then `npm run build`.
-Windows that should only close with their ✕ are listed in `PINNED_POPUPS`.
+Windows that should only close with their ✕ are listed in `PINNED_POPUPS`; tab size steps are in `ZOOM.steps`.
 Or tweak the generated userscript directly in Tampermonkey.
 
 ## How it survives Songsterr updates
@@ -83,7 +85,10 @@ The top pill is arranged by menu item ids (`#menu-search`, `#bottombar-help`), n
   `CLASSES` / `MODULES` in `src/core.js` are updated. Please [open an issue](https://github.com/BigBlackBug/songsterr-float/issues) with a screenshot.
 - A star changed in search updates Songsterr's servers, but a page that already loaded your favorites (e.g. the star on
   an open tab) shows the old state until it reloads.
-- Desktop only; designed for wide windows (the video panel moves to the right column from 1811px).
+- Tab size works by telling Songsterr the window is wider than it is (`visualViewport.width`), so the site lays each
+  line out wider and the line's SVG shrinks to fit. The extension therefore runs in the page's own world
+  (`"world": "MAIN"`, Chrome 111+ / Firefox 128+); in older browsers the button is there but does nothing.
+- Desktop only; designed for wide windows (the video panel moves to the right column from 1869px).
 
 ## Development
 

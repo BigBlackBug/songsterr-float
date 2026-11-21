@@ -23,7 +23,7 @@ test("верхняя плашка: порядок частей задаётся 
 
 test("на узком экране окна дока стоят над доком", () => {
   const css = core.buildCss();
-  const narrow = css.slice(css.lastIndexOf("@media (max-width: 1810px)"));
+  const narrow = css.slice(css.lastIndexOf(`@media (max-width: ${core.G.wideMin - 1}px)`));
   assert.match(narrow, /\[data-fixpopup\][^{]*\{[^}]*bottom: var\(--panel-bottom\)/);
 });
 
@@ -155,10 +155,38 @@ test("BPM: адрес JSON партии, базовый темп, скорост
 
 test("видео-панель на узком экране — не шире половины дока, по центру", () => {
   const css = core.buildCss();
-  assert.match(css, /@media \(max-width: 1810px\) \{\n\.oCvYpa_panel \{[^}]*max-width: 50% !important;[^}]*margin: 0 auto/);
+  assert.match(css, new RegExp(`@media \\(max-width: ${core.G.wideMin - 1}px\\) \\{\\n\\.oCvYpa_panel \\{[^}]*max-width: 50% !important;[^}]*margin: 0 auto`));
+});
+
+test("полный ряд кнопок дока влезает в одну строку", () => {
+  const { G } = core;
+  const buttons = core.MAIN_GROUPS.flat().length - 1; // без play
+  const seps = core.MAIN_GROUPS.length - 1;
+  const playWidth = 115; // play + переключатель ORIG/SYNTH
+  const items = 1 + buttons + seps;
+  const row = playWidth + buttons * G.btnSize + seps * (1 + 2 * G.sepSpace) + (items - 1) * G.btnGap;
+  assert.ok(row <= G.barWidth - 2 * G.dockInset, `ряд ${row}px не влезает в док ${G.barWidth}px`);
 });
 
 test("BPM на кнопке скорости по центру места над плашкой скорости", () => {
   const css = core.buildCss();
   assert.match(css, /#control-speed \[data-fx-bpm\]::before \{[^}]*flex: 1 1 auto[^}]*align-items: center/);
+});
+
+test("размер таба: шаги по кругу, мусор из хранилища — 100%", () => {
+  assert.equal(core.parseZoom("80"), 80);
+  assert.equal(core.parseZoom(null), 100);
+  assert.equal(core.parseZoom("85"), 100);
+  assert.equal(core.nextZoom(100), 90);
+  assert.equal(core.nextZoom(60), 100);
+  assert.equal(core.nextZoom(100, true), 60);
+  assert.equal(core.nextZoom(90, true), 100);
+});
+
+test("размер таба: окно расширяется так, чтобы строка раскладывалась в tab·100/zoom", () => {
+  // окно 1024, поля 180 → таб 844; при 80% строка должна раскладываться в 1055
+  const fake = core.zoomedViewportWidth(1024, 844, 80);
+  assert.equal(fake - 180, 844 * 100 / 80);
+  assert.equal(core.zoomedViewportWidth(1024, 844, 100), 1024);
+  assert.equal(core.zoomedViewportWidth(1024, 0, 80), 1024, "без таба — настоящая ширина");
 });

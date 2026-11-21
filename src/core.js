@@ -5,7 +5,7 @@
  *   3. ЧИСТЫЕ ФУНКЦИИ — без DOM; их же проверяют тесты (test/*.test.js)
  *   4. УТИЛИТЫ
  *   5. ФУНКЦИИ       — classNames, dock, topBar, logo, videoStack, popups, pinned,
- *                      scrollGuard, favorites, bpm
+ *                      scrollGuard, favorites, bpm, tabZoom
  *   6. ЗАПУСК        — один MutationObserver, который вызывает функции по порядку
  *
  * Сайт собран из CSS-модулей: класс = «хэш модуля» + «_» + «имя», например
@@ -27,7 +27,7 @@
     pillHeight: 56,
     pillOffset: 12,
     panelGap: 12,
-    barWidth: 1000,
+    barWidth: 1058,        // полный ряд кнопок дока: play + 14 кнопок + 3 разделителя
     sideWidth: 380,        // ширина правой колонки (микшер, настройки, видео)
     toolsMin: 270,         // самая узкая плашка инструментов: селект «Tab» сжат до упора
     btnSize: 48,
@@ -40,7 +40,7 @@
     editColGap: 8,
     sepSpace: 14,          // воздух вокруг разделителя групп
     sepHeight: 30,
-    wideMin: 1811,         // от этой ширины справа есть место под видео-панель
+    wideMin: 1869,         // от этой ширины справа есть место под видео-панель (док + 2 боковые колонки)
     logoHeight: 43,
     diffShift: 22,         // сдвиг страницы сравнения ревизий
     helpMenuBottom: -165,
@@ -98,7 +98,7 @@
     ["c-play", "c-loop", "c-speed", "c-countin", "c-metronome"],
     ["mixer-button", "c-solo", "c-mute"],
     ["c-transpose", "c-detectchords"],
-    ["c-export", "c-print", "c-revision", "c-settings"],
+    ["c-export", "c-print", "c-revision", "fx-zoom", "c-settings"],
   ];
   const KNOWN_IDS = new Set(MAIN_GROUPS.flat());
   const btnOrder = (group, i) => group * 10 + i + 1;
@@ -146,6 +146,17 @@
   const SPEED_BTN = "#control-speed";
   const SPEED_ICON = 'svg:has(> use[href$="#speed"])';
   const BPM_ATTR = "data-fx-bpm";
+
+  /* Размер таба. Сайт раскладывает строки таба под ширину окна из
+     visualViewport.width, а каждую строку рисует SVG на всю ширину контейнера.
+     Отдаём сайту окно шире настоящего — строка раскладывается шире контейнера,
+     и SVG ужимается: ноты мельче, тактов в строке и строк на экране больше. */
+  const ZOOM = {
+    steps: [100, 90, 80, 70, 60], // клик по кнопке — следующий шаг, после последнего снова 100
+    key: "fx-tab-zoom",           // localStorage
+    id: "fx-zoom",                // кнопка в доке
+    tab: "tablature",             // id контейнера таба
+  };
 
   /* ==========================================================
      2. СТИЛИ
@@ -471,6 +482,23 @@
     }),
   ].join("\n");
 
+  // Кнопка размера таба — своя ячейка дока, выглядит как родные кнопки
+  const zoomCss = () => [
+    rule(`${S.bar} > #${ZOOM.id}`, {
+      position: "relative", flex: "0 0 var(--btn-size)",
+      width: "var(--btn-size)", height: "var(--btn-size)", margin: 0, padding: 0,
+      display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
+    }),
+    rule(`#${ZOOM.id} > button`, {
+      width: "100%", height: "100%", margin: 0, padding: 0, border: "none",
+      borderRadius: "var(--btn-radius)", background: "var(--controls-button-surface, rgba(0, 0, 0, 0.35))",
+      color: "inherit", cursor: "pointer",
+      font: "600 14px/17px var(--system, sans-serif)", fontVariantNumeric: "tabular-nums",
+    }),
+    rule(`#${ZOOM.id} > button:hover`, { filter: "brightness(1.25)" }),
+    rule(`#${ZOOM.id} > button:focus-visible`, { outline: "2px solid currentColor", outlineOffset: "2px" }),
+  ].join("\n");
+
   // Мелкие правки: логотип, баннер ревизий, декоративная линия, страница diff
   const miscCss = () => [
     // вид логотипа родной, меняется только top (центр совпадает с центром плашки);
@@ -553,7 +581,7 @@
 
   const buildCss = () => [
     tokens(), topBarCss(), panelsCss(), dockCss(), toolsCss(),
-    videoCss(), popupsCss(), bpmCss(), miscCss(), favoritesCss(), animationsCss(),
+    videoCss(), popupsCss(), bpmCss(), zoomCss(), miscCss(), favoritesCss(), animationsCss(),
   ].join("\n");
 
   /* Новый хэш модуля по классам, найденным на странице.
@@ -635,10 +663,32 @@
   // Темп при данной скорости, целым числом
   const bpmAtSpeed = (base, speed) => Math.round((base * speed) / 100);
 
+  // сохранённый размер таба; всё, чего нет среди шагов, — 100
+  const parseZoom = (value) => {
+    const n = Number(value);
+    return ZOOM.steps.includes(n) ? n : 100;
+  };
+
+  // следующий шаг размера (back — предыдущий), по кругу
+  function nextZoom(current, back = false) {
+    const { steps } = ZOOM;
+    const i = steps.indexOf(parseZoom(current));
+    return steps[(i + (back ? steps.length - 1 : 1)) % steps.length];
+  }
+
+  /* Ширина окна для сайта. Строка таба раскладывается в «ширину окна» минус
+     постоянные поля, а рисуется в tabWidth. Чтобы раскладка стала tabWidth·100/zoom,
+     окно расширяем на разницу. Без таба на странице — настоящая ширина. */
+  function zoomedViewportWidth(real, tabWidth, zoom) {
+    if (!(zoom > 0 && zoom < 100) || !(tabWidth > 0)) return real;
+    return real + tabWidth * (100 / zoom - 1);
+  }
+
   const API = {
-    G, MODULES, CLASSES, C, D, S, PINNED_POPUPS, PIN_ATTR, PIN_VALUE,
+    G, MODULES, CLASSES, C, D, S, MAIN_GROUPS, PINNED_POPUPS, PIN_ATTR, PIN_VALUE, ZOOM,
     rule, escapeClass, refreshNames, buildCss, findModuleHash, planEditLayout,
     isPopupTitle, parseSongId, parseFavoriteIds, parsePartUrl, parseBaseBpm, parseSpeed, bpmAtSpeed,
+    parseZoom, nextZoom, zoomedViewportWidth,
   };
 
   // Без DOM (node, тесты) — только отдаём чистые функции
@@ -705,8 +755,10 @@
 
   applyStyles();
 
-  /* fetch от имени страницы. В Firefox fetch контент-скрипта идёт от расширения
-     (без cookies сайта), а content.fetch — от страницы. */
+  /* fetch от имени страницы. Расширение запускается в мире страницы ("world": "MAIN"),
+     там content нет. Firefox старше 128 мир не поддерживает и запускает скрипт
+     изолированно: там fetch идёт от расширения (без cookies сайта), а content.fetch —
+     от страницы. */
   const pageFetch =
     typeof content !== "undefined" && content && typeof content.fetch === "function"
       ? content.fetch.bind(content)
@@ -1378,6 +1430,90 @@
     return { sync };
   })();
 
+  /* ---------- 5.12 Размер таба ----------
+     Ширину раскладки сайт берёт из visualViewport.width (геттер на прототипе),
+     пересчитывает по событию resize на visualViewport. Подменяем геттер и шлём
+     resize сами: при смене размера и когда ширина таба разошлась с той, под которую
+     сайт раскладывал последний раз (таб только появился, сменилась вёрстка). */
+  const tabZoom = (() => {
+    let zoom = 100;
+    try {
+      zoom = parseZoom(localStorage.getItem(ZOOM.key));
+    } catch {
+      // нет localStorage — обычный размер
+    }
+    let laidOutFor = 0; // ширина таба, под которую сайт последний раз спрашивал окно
+
+    const tabWidth = () => {
+      const tab = document.getElementById(ZOOM.tab);
+      return tab ? tab.clientWidth : 0;
+    };
+
+    const proto = typeof VisualViewport === "function" ? VisualViewport.prototype : null;
+    const own = proto && Object.getOwnPropertyDescriptor(proto, "width");
+    const active = !!(own && own.get && own.configurable);
+    if (active) {
+      Object.defineProperty(proto, "width", {
+        configurable: true,
+        enumerable: own.enumerable,
+        get() {
+          const real = own.get.call(this);
+          laidOutFor = zoom < 100 ? tabWidth() : 0;
+          return zoomedViewportWidth(real, laidOutFor, zoom);
+        },
+      });
+    }
+
+    const relayout = () => {
+      if (window.visualViewport) window.visualViewport.dispatchEvent(new Event("resize"));
+    };
+
+    function set(value) {
+      zoom = parseZoom(value);
+      try {
+        if (zoom === 100) localStorage.removeItem(ZOOM.key);
+        else localStorage.setItem(ZOOM.key, String(zoom));
+      } catch {
+        // не сохранится — действует до перезагрузки
+      }
+      paint();
+      relayout();
+    }
+
+    function makeButton() {
+      const item = document.createElement("div");
+      item.id = ZOOM.id;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.addEventListener("click", (e) => set(nextZoom(zoom, e.shiftKey)));
+      item.appendChild(btn);
+      return item;
+    }
+
+    function paint() {
+      const btn = document.querySelector(`#${ZOOM.id} > button`);
+      if (!btn) return;
+      const text = `${zoom}%`;
+      if (btn.textContent === text) return;
+      btn.textContent = text;
+      btn.title = `Tab size ${text} — click: smaller, Shift+click: larger`;
+      btn.setAttribute("aria-label", `Tab size ${text}`);
+    }
+
+    function sync() {
+      if (!active) return;
+      const bar = document.querySelector(S.bar);
+      if (bar && !bar.querySelector(`:scope > #${ZOOM.id}`)) {
+        document.getElementById(ZOOM.id)?.remove(); // док пересоздан — старая кнопка осталась в старом
+        bar.appendChild(makeButton());
+      }
+      paint();
+      if (zoom < 100 && tabWidth() !== laidOutFor) relayout();
+    }
+
+    return { sync };
+  })();
+
   /* ==========================================================
      6. ЗАПУСК
      ========================================================== */
@@ -1428,6 +1564,7 @@
         syncPinned();
         favorites.sync();
         bpm.sync();
+        tabZoom.sync();
         videoStack.update();
       } finally {
         mo.observe(document.body, opts);
@@ -1445,6 +1582,7 @@
     syncPinned();
     favorites.sync();
     bpm.sync();
+    tabZoom.sync();
   }
 
   if (document.body) init();

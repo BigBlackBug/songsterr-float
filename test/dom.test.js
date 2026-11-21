@@ -244,3 +244,66 @@ test("кнопка скорости: чужая песня или нет тем�
   await settle(window);
   assert.equal(box.hasAttribute("data-fx-bpm"), false);
 });
+
+// visualViewport как в браузере: геттер width на прототипе, resize — событие объекта;
+// у контейнера таба ширина tabW (в jsdom раскладки нет)
+function withViewport({ width = 1024, tabW = 844, stored = null } = {}) {
+  const vv = { resizes: 0 };
+  vv.prepare = (window) => {
+    class VisualViewport extends window.EventTarget {}
+    Object.defineProperty(VisualViewport.prototype, "width", { configurable: true, get: () => width });
+    window.VisualViewport = VisualViewport;
+    window.visualViewport = new VisualViewport();
+    window.visualViewport.addEventListener("resize", () => vv.resizes++);
+    Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
+      configurable: true, get() { return this.id === "tablature" ? tabW : 0; },
+    });
+    if (stored) window.localStorage.setItem("fx-tab-zoom", stored);
+  };
+  return vv;
+}
+const DOCK_WITH_TAB = `
+  <aside id="controls"><div class="idrtTa_controls">
+    <div id="c-print" class="idrtTa_item"></div><div id="c-settings" class="idrtTa_item"></div>
+  </div></aside>
+  <section id="tablature"></section>`;
+
+test("размер таба: кнопка в доке уменьшает таб по кругу и запоминает шаг", async () => {
+  const vv = withViewport();
+  const { window, document } = setup(DOCK_WITH_TAB, {}, vv.prepare);
+  await settle(window);
+
+  const btn = document.querySelector(".idrtTa_controls > #fx-zoom > button");
+  assert.ok(btn, "кнопка вставлена в док");
+  assert.equal(btn.textContent, "100%");
+  assert.equal(window.visualViewport.width, 1024, "при 100% ширина настоящая");
+  assert.equal(vv.resizes, 0);
+
+  btn.click();
+  assert.equal(btn.textContent, "90%");
+  assert.equal(window.localStorage.getItem("fx-tab-zoom"), "90");
+  assert.equal(vv.resizes, 1, "сайт пересчитывает раскладку");
+  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 90 - 1));
+
+  btn.dispatchEvent(new window.MouseEvent("click", { shiftKey: true, bubbles: true }));
+  assert.equal(btn.textContent, "100%");
+  assert.equal(window.localStorage.getItem("fx-tab-zoom"), null);
+  assert.equal(window.visualViewport.width, 1024);
+});
+
+test("размер таба: сохранённый шаг применяется, когда таб появился", async () => {
+  const vv = withViewport({ stored: "70" });
+  const { window, document } = setup('<aside id="controls"><div class="idrtTa_controls"></div></aside>', {}, vv.prepare);
+  await settle(window);
+  assert.equal(window.visualViewport.width, 1024, "таба ещё нет");
+  assert.equal(vv.resizes, 0);
+
+  document.body.insertAdjacentHTML("beforeend", '<section id="tablature"></section>');
+  await settle(window);
+  assert.equal(vv.resizes, 1, "таб появился — сайт пересчитывает раскладку");
+  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 70 - 1));
+  assert.equal(document.querySelector("#fx-zoom > button").textContent, "70%");
+
+  await settle(window);
+  assert.equal(vv.resizes, 1, "ширина та же — повторно не дёргаем");
+});
