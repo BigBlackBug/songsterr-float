@@ -266,9 +266,11 @@ const DOCK_WITH_TAB = `
   <aside id="controls"><div class="idrtTa_controls">
     <div id="c-print" class="idrtTa_item"></div><div id="c-settings" class="idrtTa_item"></div>
   </div></aside>
-  <section id="tablature"></section>`;
+  <section id="tablature"><div class="w2moHa_multiTrackLinesWrap">
+    <svg class="sQA3oa_multiTrackLineGroup" viewBox="0 0 844 197"></svg>
+  </div></section>`;
 
-test("размер таба: кнопка в доке уменьшает таб по кругу и запоминает шаг", async () => {
+test("размер таба: кнопка открывает окно, пресет и −/+ меняют размер и запоминаются", async () => {
   const vv = withViewport();
   const { window, document } = setup(DOCK_WITH_TAB, {}, vv.prepare);
   await settle(window);
@@ -280,15 +282,75 @@ test("размер таба: кнопка в доке уменьшает таб 
   assert.equal(vv.resizes, 0);
 
   btn.click();
-  assert.equal(btn.textContent, "90%");
-  assert.equal(window.localStorage.getItem("fx-tab-zoom"), "90");
-  assert.equal(vv.resizes, 1, "сайт пересчитывает раскладку");
-  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 90 - 1));
+  const pop = document.getElementById("fx-zoom-pop");
+  assert.ok(pop, "окно открыто");
+  assert.equal(pop.getAttribute("data-fixpopup"), "zoom", "стоит как окна дока");
+  assert.equal(btn.getAttribute("aria-expanded"), "true");
+  assert.equal(pop.querySelector(".fx-pop-value").textContent, "100%");
+  assert.deepEqual([...pop.querySelectorAll("[data-zoom]")].map((b) => b.textContent), ["60%", "70%", "80%", "90%", "100%"]);
+  assert.equal(pop.querySelector('[data-zoom="100"]').getAttribute("aria-pressed"), "true");
+  assert.equal(pop.querySelector('[data-act="1"]').disabled, true, "больше 100 нельзя");
 
-  btn.dispatchEvent(new window.MouseEvent("click", { shiftKey: true, bubbles: true }));
-  assert.equal(btn.textContent, "100%");
+  pop.querySelector('[data-zoom="80"]').click();
+  assert.equal(btn.textContent, "80%");
+  assert.equal(window.localStorage.getItem("fx-tab-zoom"), "80");
+  assert.equal(vv.resizes, 1, "сайт пересчитывает раскладку");
+  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 80 - 1));
+  assert.equal(pop.querySelector('[data-zoom="80"]').getAttribute("aria-pressed"), "true");
+
+  pop.querySelector('[data-act="-1"]').click();
+  assert.equal(btn.textContent, "75%", "минус — на 5");
+  assert.equal(pop.querySelector(".fx-pop-value").textContent, "75%");
+  assert.equal(pop.querySelectorAll('[aria-pressed="true"]').length, 0, "75 — не пресет");
+
+  // строка сжимается только по ширине: высоту держит CSS, SVG тянется без пропорций
+  const root = document.documentElement;
+  const line = document.querySelector(".sQA3oa_multiTrackLineGroup");
+  assert.equal(root.getAttribute("data-fx-zoom"), "75");
+  assert.equal(root.style.getPropertyValue("--fx-zoom"), "0.75");
+  assert.equal(line.getAttribute("preserveAspectRatio"), "none");
+
+  // новая строка (сайт дорисовал при прокрутке) получает то же
+  line.parentElement.insertAdjacentHTML("afterend",
+    '<div class="w2moHa_multiTrackLinesWrap"><svg class="sQA3oa_multiTrackLineGroup"></svg></div>');
+  await settle(window);
+  assert.equal(document.querySelectorAll('[preserveAspectRatio="none"]').length, 2);
+
+  pop.querySelector('[data-zoom="100"]').click();
   assert.equal(window.localStorage.getItem("fx-tab-zoom"), null);
   assert.equal(window.visualViewport.width, 1024);
+  assert.equal(root.hasAttribute("data-fx-zoom"), false);
+  assert.equal(root.style.getPropertyValue("--fx-zoom"), "");
+  assert.equal(document.querySelectorAll("[preserveAspectRatio]").length, 0, "в 100% строки родные");
+
+  pop.querySelector('[data-act="close"]').click();
+  assert.equal(document.getElementById("fx-zoom-pop"), null, "✕ закрывает");
+  assert.equal(btn.getAttribute("aria-expanded"), "false");
+});
+
+test("размер таба: окно закрывается повторным кликом, Esc и кликом мимо", async () => {
+  const vv = withViewport();
+  const { window, document } = setup(DOCK_WITH_TAB, {}, vv.prepare);
+  await settle(window);
+  const btn = document.querySelector("#fx-zoom > button");
+  const isOpen = () => !!document.getElementById("fx-zoom-pop");
+
+  btn.click();
+  assert.ok(isOpen());
+  btn.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+  btn.click();
+  assert.ok(!isOpen(), "повторный клик по кнопке");
+
+  btn.click();
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.ok(!isOpen(), "Esc");
+
+  btn.click();
+  document.getElementById("fx-zoom-pop").querySelector(".fx-pop-value")
+    .dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+  assert.ok(isOpen(), "клик внутри окна не закрывает");
+  document.getElementById("tablature").dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+  assert.ok(!isOpen(), "клик мимо");
 });
 
 test("размер таба: сохранённый шаг применяется, когда таб появился", async () => {
@@ -306,4 +368,45 @@ test("размер таба: сохранённый шаг применяетс�
 
   await settle(window);
   assert.equal(vv.resizes, 1, "ширина та же — повторно не дёргаем");
+});
+
+// окно скорости как на сайте: ползунок 0–100 равными долями между пресетами 15…175
+const SPEED_POPUP = `
+  <div data-tab-control="speed"><div class="DhZNRW_popup">
+    <input type="range" aria-label="Speed" aria-valuetext="100%" min="0" max="100" step="any">
+    <section><div class="DhZNRW_grid">
+      ${[15, 25, 50, 75, 100, 125, 150, 175].map((v) =>
+        `<button type="button" class="qzgWxW_button DhZNRW_preset${v === 100 ? " DhZNRW_active" : ""}">${v}%</button>`).join("")}
+      <button type="button" aria-label="Fine tuning" class="qzgWxW_button DhZNRW_preset">- | +</button>
+    </div></section>
+  </div></div>`;
+
+test("пресеты скорости: родные спрятаны, свои 50–100 перед «− | +» ставят скорость ползунком", async () => {
+  const { window, document } = setup(SPEED_POPUP);
+  await settle(window);
+  const grid = document.querySelector(".DhZNRW_grid");
+  const slider = document.querySelector('input[type="range"]');
+
+  const ours = [...grid.querySelectorAll("[data-fx-speed]")];
+  assert.deepEqual(ours.map((b) => b.textContent), ["50%", "60%", "70%", "80%", "90%", "100%"]);
+  assert.equal(grid.querySelectorAll("[data-fx-native]").length, 8, "родные пресеты спрятаны");
+  assert.equal(grid.lastElementChild.getAttribute("aria-label"), "Fine tuning", "«− | +» остаётся последней");
+  assert.equal(ours[0].className, "qzgWxW_button DhZNRW_preset", "вид родных, без класса активного");
+  assert.equal(grid.querySelector('[data-fx-speed="100"]').getAttribute("aria-pressed"), "true");
+
+  let input = 0;
+  slider.addEventListener("input", () => input++);
+  grid.querySelector('[data-fx-speed="60"]').click();
+  assert.equal(input, 1, "React узнаёт о смене через input");
+  assert.equal(Number(slider.value), ((2 + 10 / 25) / 7) * 100);
+
+  // сайт обновил ползунок — подсветка переезжает
+  slider.setAttribute("aria-valuetext", "60%");
+  document.body.appendChild(document.createElement("i"));
+  await settle(window);
+  assert.equal(grid.querySelector('[data-fx-speed="60"]').getAttribute("aria-pressed"), "true");
+  assert.equal(grid.querySelector('[data-fx-speed="100"]').getAttribute("aria-pressed"), "false");
+
+  await settle(window);
+  assert.equal(grid.querySelectorAll("[data-fx-speed]").length, 6, "повторно не добавляются");
 });

@@ -5,7 +5,7 @@
  *   3. ЧИСТЫЕ ФУНКЦИИ — без DOM; их же проверяют тесты (test/*.test.js)
  *   4. УТИЛИТЫ
  *   5. ФУНКЦИИ       — classNames, dock, topBar, logo, videoStack, popups, pinned,
- *                      scrollGuard, favorites, bpm, tabZoom
+ *                      scrollGuard, favorites, bpm, tabZoom, speedPresets
  *   6. ЗАПУСК        — один MutationObserver, который вызывает функции по порядку
  *
  * Сайт собран из CSS-модулей: класс = «хэш модуля» + «_» + «имя», например
@@ -65,6 +65,8 @@
     badge: { hash: "_8e144G", anchor: "date", confirm: ["badge"], scope: "#controls" },
     fancy: { hash: "_6_NcWG", anchor: "labelChecked" },
     logo: { hash: "_9HBv-q", anchor: "logoContainer" },
+    lines: { hash: "w2moHa", anchor: "multiTrackLinesWrap", scope: "#tablature" },
+    line: { hash: "sQA3oa", anchor: "multiTrackLineGroup", scope: "#tablature" },
   };
 
   // Классы сайта: [модуль, имя]. Готовые имена (с хэшем) лежат в C и D.
@@ -87,6 +89,9 @@
     fancyBox: ["fancy", "container"],
     fancyChecked: ["fancy", "labelChecked"],
     logo: ["logo", "logoContainer"],
+    linesWrap: ["lines", "multiTrackLinesWrap"],
+    linesPlaceholder: ["lines", "placeholder"],
+    lineSvg: ["line", "multiTrackLineGroup"],
   };
 
   const C = {}; // имена классов с хэшем — для classList
@@ -150,12 +155,25 @@
   /* Размер таба. Сайт раскладывает строки таба под ширину окна из
      visualViewport.width, а каждую строку рисует SVG на всю ширину контейнера.
      Отдаём сайту окно шире настоящего — строка раскладывается шире контейнера,
-     и SVG ужимается: ноты мельче, тактов в строке и строк на экране больше. */
+     и сжимаем SVG только по ширине: высота строк и нот прежняя, тактов в строке больше. */
   const ZOOM = {
-    steps: [100, 90, 80, 70, 60], // клик по кнопке — следующий шаг, после последнего снова 100
+    presets: [60, 70, 80, 90, 100], // кнопки в окне размера
+    min: 50, max: 100, step: 5,     // −/+ в окне размера
     key: "fx-tab-zoom",           // localStorage
     id: "fx-zoom",                // кнопка в доке
     tab: "tablature",             // id контейнера таба
+    attr: "data-fx-zoom",         // на <html>, пока шаг меньше 100
+    cssVar: "--fx-zoom",          // шаг долей: 0.8
+    popId: "fx-zoom-pop",         // окно размера (стоит как окна дока)
+  };
+
+  /* Пресеты окна скорости: вместо родных (15 25 50 75 … 175) — свои. Скорость
+     ставим ползунком окна: он идёт равными долями между родными пресетами. */
+  const SPEED = {
+    presets: [50, 60, 70, 80, 90, 100],
+    popup: '[data-tab-control="speed"]',
+    attr: "data-fx-speed",   // наши кнопки
+    hide: "data-fx-native",  // спрятанные родные пресеты
   };
 
   /* ==========================================================
@@ -186,6 +204,7 @@
   --pill-offset: ${G.pillOffset}px;
   --panel-gap: ${G.panelGap}px;
   --bar-width: ${G.barWidth}px;
+  --fx-accent: rgb(0, 122, 255);
   --left-width: ${G.sideWidth}px;
   --btn-size: ${G.btnSize}px;
   --dock-inset: ${G.dockInset}px;
@@ -497,6 +516,67 @@
     }),
     rule(`#${ZOOM.id} > button:hover`, { filter: "brightness(1.25)" }),
     rule(`#${ZOOM.id} > button:focus-visible`, { outline: "2px solid currentColor", outlineOffset: "2px" }),
+    rule(`#${ZOOM.id} > button[aria-expanded="true"]`, { background: "var(--fx-accent)", color: "#fff" }),
+
+    // окно размера: место и размер — как у окон дока ([data-fixpopup]), вид — как у окна скорости
+    rule(`#${ZOOM.popId}`, {
+      background: "var(--pill-bg)", color: "#fff", boxShadow: "0 4px 35px rgba(0, 0, 0, 0.6)",
+      overflow: "hidden", fontFamily: "inherit",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-head`, {
+      position: "relative", height: "55px", padding: "5px 40px", boxSizing: "border-box",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-title`, { fontWeight: 700, fontSize: "15px", lineHeight: "20px", color: "#d1d1d1" }),
+    rule(`#${ZOOM.popId} .fx-pop-close`, {
+      position: "absolute", top: "12px", right: "10px", width: "32px", height: "32px", padding: "4px",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "none", border: 0, color: "#fff", cursor: "pointer",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-strip`, {
+      padding: "6px 0", background: "rgb(45, 45, 50)",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: "24px",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-step`, {
+      width: "40px", height: "28px", padding: 0, border: 0, borderRadius: "8px",
+      background: "rgba(0, 0, 0, 0.35)", color: "#939191", fontSize: "18px", fontWeight: 500, lineHeight: 1, cursor: "pointer",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-value`, {
+      width: "90px", textAlign: "center", color: "#d1d1d1", fontVariantNumeric: "tabular-nums",
+      fontSize: "17px", fontWeight: 600,
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-grid`, {
+      padding: "10px 15px 20px", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "15px 10px",
+    }),
+    rule(`#${ZOOM.popId} .fx-pop-preset`, {
+      width: "58px", height: "44px", padding: 0, border: 0, borderRadius: "10px",
+      background: "rgba(0, 0, 0, 0.35)", color: "#939191", fontSize: "16px", fontWeight: 600, cursor: "pointer",
+    }),
+    rule(`#${ZOOM.popId} button:hover:not(:disabled)`, { filter: "brightness(1.25)" }),
+    rule(`#${ZOOM.popId} button:disabled`, { opacity: 0.4, cursor: "default" }),
+    rule(`#${ZOOM.popId} button:focus-visible`, { outline: "2px solid currentColor", outlineOffset: "2px" }),
+    rule(`#${ZOOM.popId} .fx-pop-preset[aria-pressed="true"], ${SPEED.popup} [${SPEED.attr}][aria-pressed="true"]`, {
+      background: "var(--fx-accent)", color: "#fff",
+    }),
+
+    // окно скорости: родные пресеты спрятаны, вместо них наши (их ставит speedPresets)
+    rule(`${SPEED.popup} [${SPEED.hide}]`, { display: "none" }),
+    rule(`${SPEED.popup} :has(> [${SPEED.attr}])`, { justifyContent: "center" }),
+    // сайт подсвечивает «− | +», когда скорость не из его пресетов — с нашими это лишнее
+    rule(`${SPEED.popup} :has(> [${SPEED.attr}]) > button[aria-expanded="false"]`, {
+      background: "rgba(0, 0, 0, 0.35)", color: "#939191",
+    }),
+
+    // Строка разложена шире таба (--group-aspect-ratio = ширина раскладки / высота).
+    // Сжимаем её только по ширине: высота остаётся родной, SVG тянется без сохранения
+    // пропорций (preserveAspectRatio="none" ставит JS). Заглушки невидимых строк — так же,
+    // иначе прокрутка прыгает.
+    rule(`html[${ZOOM.attr}] ${D.linesWrap} > ${D.lineSvg}`, {
+      height: "auto", aspectRatio: `calc(var(--group-aspect-ratio) * var(${ZOOM.cssVar}))`,
+    }),
+    rule(`html[${ZOOM.attr}] ${D.linesPlaceholder}`, {
+      aspectRatio: `calc(var(--group-aspect-ratio) * var(${ZOOM.cssVar}))`,
+    }),
   ].join("\n");
 
   // Мелкие правки: логотип, баннер ревизий, декоративная линия, страница diff
@@ -663,17 +743,26 @@
   // Темп при данной скорости, целым числом
   const bpmAtSpeed = (base, speed) => Math.round((base * speed) / 100);
 
-  // сохранённый размер таба; всё, чего нет среди шагов, — 100
+  // сохранённый размер таба: кратный шагу в [min, max], иначе 100
   const parseZoom = (value) => {
     const n = Number(value);
-    return ZOOM.steps.includes(n) ? n : 100;
+    const ok = Number.isInteger(n) && n >= ZOOM.min && n <= ZOOM.max && n % ZOOM.step === 0;
+    return ok ? n : 100;
   };
 
-  // следующий шаг размера (back — предыдущий), по кругу
-  function nextZoom(current, back = false) {
-    const { steps } = ZOOM;
-    const i = steps.indexOf(parseZoom(current));
-    return steps[(i + (back ? steps.length - 1 : 1)) % steps.length];
+  // −/+ в окне размера: на шаг, не выходя за границы
+  const stepZoom = (current, dir) =>
+    Math.min(ZOOM.max, Math.max(ZOOM.min, parseZoom(current) + dir * ZOOM.step));
+
+  /* Положение ползунка скорости (0–100) для скорости speed. Ползунок делит путь
+     поровну между родными пресетами stops (по возрастанию), внутри — линейно. */
+  function speedToSlider(speed, stops) {
+    const last = stops.length - 1;
+    if (last < 1 || speed <= stops[0]) return 0;
+    for (let i = 0; i < last; i++) {
+      if (speed <= stops[i + 1]) return ((i + (speed - stops[i]) / (stops[i + 1] - stops[i])) / last) * 100;
+    }
+    return 100;
   }
 
   /* Ширина окна для сайта. Строка таба раскладывается в «ширину окна» минус
@@ -688,7 +777,7 @@
     G, MODULES, CLASSES, C, D, S, MAIN_GROUPS, PINNED_POPUPS, PIN_ATTR, PIN_VALUE, ZOOM,
     rule, escapeClass, refreshNames, buildCss, findModuleHash, planEditLayout,
     isPopupTitle, parseSongId, parseFavoriteIds, parsePartUrl, parseBaseBpm, parseSpeed, bpmAtSpeed,
-    parseZoom, nextZoom, zoomedViewportWidth,
+    SPEED, parseZoom, stepZoom, zoomedViewportWidth, speedToSlider,
   };
 
   // Без DOM (node, тесты) — только отдаём чистые функции
@@ -1434,7 +1523,8 @@
      Ширину раскладки сайт берёт из visualViewport.width (геттер на прототипе),
      пересчитывает по событию resize на visualViewport. Подменяем геттер и шлём
      resize сами: при смене размера и когда ширина таба разошлась с той, под которую
-     сайт раскладывал последний раз (таб только появился, сменилась вёрстка). */
+     сайт раскладывал последний раз (таб только появился, сменилась вёрстка).
+     Разложенную шире строку сжимаем только по ширине (squeeze), чтобы ноты не мельчали. */
   const tabZoom = (() => {
     let zoom = 100;
     try {
@@ -1477,7 +1567,27 @@
         // не сохранится — действует до перезагрузки
       }
       paint();
+      squeeze();
       relayout();
+    }
+
+    // Сжатие строк по ширине: атрибут и доля шага на <html> включают CSS из zoomCss
+    function squeeze() {
+      const root = document.documentElement;
+      const on = zoom < 100;
+      if (on) {
+        root.setAttribute(ZOOM.attr, String(zoom));
+        root.style.setProperty(ZOOM.cssVar, String(zoom / 100));
+      } else if (root.hasAttribute(ZOOM.attr)) {
+        root.removeAttribute(ZOOM.attr);
+        root.style.removeProperty(ZOOM.cssVar);
+      }
+      const tab = document.getElementById(ZOOM.tab);
+      if (!tab) return;
+      for (const svg of tab.querySelectorAll(`${D.linesWrap} > ${D.lineSvg}`)) {
+        if (on && svg.getAttribute("preserveAspectRatio") !== "none") svg.setAttribute("preserveAspectRatio", "none");
+        else if (!on && svg.getAttribute("preserveAspectRatio") === "none") svg.removeAttribute("preserveAspectRatio");
+      }
     }
 
     function makeButton() {
@@ -1485,19 +1595,96 @@
       item.id = ZOOM.id;
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.addEventListener("click", (e) => set(nextZoom(zoom, e.shiftKey)));
+      btn.setAttribute("aria-haspopup", "dialog");
+      btn.addEventListener("click", toggle);
       item.appendChild(btn);
       return item;
     }
 
+    /* Окно размера — как окно скорости: заголовок с ✕, полоса −/+ со значением,
+       ниже пресеты. Стоит там же, где окна дока (data-fixpopup). Закрывается ✕,
+       повторным кликом по кнопке, Esc и кликом мимо. */
+    const popup = () => document.getElementById(ZOOM.popId);
+
+    function buildPopup() {
+      const pop = document.createElement("div");
+      pop.id = ZOOM.popId;
+      pop.setAttribute("role", "dialog");
+      pop.setAttribute("aria-label", "Tab size");
+      pop.innerHTML =
+        '<div class="fx-pop-head"><span class="fx-pop-title">Tab size</span>' +
+        '<button type="button" class="fx-pop-close" data-act="close" title="Close" aria-label="Close">' +
+        '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>' +
+        '<div class="fx-pop-strip">' +
+        '<button type="button" class="fx-pop-step" data-act="-1" aria-label="Narrower tab">−</button>' +
+        '<span class="fx-pop-value" aria-live="polite"></span>' +
+        '<button type="button" class="fx-pop-step" data-act="1" aria-label="Wider tab">+</button></div>' +
+        '<div class="fx-pop-grid">' +
+        ZOOM.presets.map((v) => `<button type="button" class="fx-pop-preset" data-zoom="${v}">${v}%</button>`).join("") +
+        "</div>";
+      pop.addEventListener("click", (e) => {
+        const b = e.target instanceof Element && e.target.closest("button");
+        if (!b) return;
+        const act = b.getAttribute("data-act");
+        if (act === "close") close();
+        else if (act) set(stepZoom(zoom, Number(act)));
+        else set(b.getAttribute("data-zoom"));
+      });
+      return pop;
+    }
+
+    function open() {
+      if (popup()) return;
+      const pop = buildPopup();
+      document.body.appendChild(pop);
+      tagPopup(pop, "zoom");
+      paint();
+    }
+
+    function close() {
+      popup()?.remove();
+      paint();
+    }
+
+    function toggle() {
+      if (popup()) close();
+      else open();
+    }
+
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        const pop = popup();
+        if (!pop || !(e.target instanceof Element)) return;
+        if (!pop.contains(e.target) && !e.target.closest(`#${ZOOM.id}`)) close();
+      },
+      true
+    );
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && popup()) close();
+    });
+
     function paint() {
-      const btn = document.querySelector(`#${ZOOM.id} > button`);
-      if (!btn) return;
       const text = `${zoom}%`;
-      if (btn.textContent === text) return;
-      btn.textContent = text;
-      btn.title = `Tab size ${text} — click: smaller, Shift+click: larger`;
-      btn.setAttribute("aria-label", `Tab size ${text}`);
+      const btn = document.querySelector(`#${ZOOM.id} > button`);
+      if (btn) {
+        const expanded = String(!!popup());
+        if (btn.textContent !== text) {
+          btn.textContent = text;
+          btn.title = `Tab size ${text}`;
+          btn.setAttribute("aria-label", `Tab size ${text}`);
+        }
+        if (btn.getAttribute("aria-expanded") !== expanded) btn.setAttribute("aria-expanded", expanded);
+      }
+      const pop = popup();
+      if (!pop) return;
+      pop.querySelector(".fx-pop-value").textContent = text;
+      pop.querySelector('[data-act="-1"]').disabled = zoom <= ZOOM.min;
+      pop.querySelector('[data-act="1"]').disabled = zoom >= ZOOM.max;
+      pop.querySelectorAll("[data-zoom]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(Number(b.getAttribute("data-zoom")) === zoom));
+      });
     }
 
     function sync() {
@@ -1507,8 +1694,68 @@
         document.getElementById(ZOOM.id)?.remove(); // док пересоздан — старая кнопка осталась в старом
         bar.appendChild(makeButton());
       }
+      if (!bar) popup()?.remove(); // ушли со страницы таба
       paint();
+      squeeze();
       if (zoom < 100 && tabWidth() !== laidOutFor) relayout();
+    }
+
+    return { sync };
+  })();
+
+  /* ---------- 5.13 Пресеты скорости ----------
+     В окне скорости прячем родные пресеты и ставим свои (SPEED.presets) перед кнопкой
+     «− | +». Скорость выставляем родным ползунком окна: значение через нативный
+     сеттер + input/change — так React его принимает. Шкалу ползунка берём из родных
+     пресетов, поэтому она не устаревает. */
+  const speedPresets = (() => {
+    const PERCENT = /^(\d+)\s*%$/;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+
+    function setSpeed(slider, speed, stops) {
+      valueSetter.call(slider, String(speedToSlider(speed, stops)));
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      slider.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function sync() {
+      const pop = document.querySelector(SPEED.popup);
+      const slider = pop && pop.querySelector('input[type="range"]');
+      if (!slider) return;
+      const natives = [...pop.querySelectorAll("button")].filter(
+        (b) => !b.hasAttribute(SPEED.attr) && PERCENT.test(b.textContent.trim())
+      );
+      if (natives.length < 2) return;
+      const stops = natives.map((b) => Number(PERCENT.exec(b.textContent.trim())[1])).sort((a, b) => a - b);
+      const grid = natives[0].parentElement;
+
+      natives.forEach((b) => b.hasAttribute(SPEED.hide) || b.setAttribute(SPEED.hide, ""));
+
+      // вид — общие классы родных пресетов (без класса активного, он есть только у одного)
+      const shared = [...natives[0].classList].filter((c) => natives.every((b) => b.classList.contains(c)));
+      const anchor = [...grid.children].find((b) => !natives.includes(b) && !b.hasAttribute(SPEED.attr)) || null;
+      for (const v of SPEED.presets) {
+        let b = grid.querySelector(`:scope > [${SPEED.attr}="${v}"]`);
+        if (!b) {
+          b = document.createElement("button");
+          b.type = "button";
+          b.setAttribute(SPEED.attr, String(v));
+          b.textContent = `${v}%`;
+          b.addEventListener("click", () => {
+            const s = pop.isConnected && pop.querySelector('input[type="range"]');
+            if (s) setSpeed(s, v, stops);
+          });
+          grid.insertBefore(b, anchor);
+        }
+        const cls = shared.join(" ");
+        if (b.className !== cls) b.className = cls;
+      }
+
+      const current = parseSpeed(slider.getAttribute("aria-valuetext"));
+      grid.querySelectorAll(`:scope > [${SPEED.attr}]`).forEach((b) => {
+        const pressed = String(Number(b.getAttribute(SPEED.attr)) === current);
+        if (b.getAttribute("aria-pressed") !== pressed) b.setAttribute("aria-pressed", pressed);
+      });
     }
 
     return { sync };
@@ -1565,6 +1812,7 @@
         favorites.sync();
         bpm.sync();
         tabZoom.sync();
+        speedPresets.sync();
         videoStack.update();
       } finally {
         mo.observe(document.body, opts);
@@ -1583,6 +1831,7 @@
     favorites.sync();
     bpm.sync();
     tabZoom.sync();
+    speedPresets.sync();
   }
 
   if (document.body) init();
