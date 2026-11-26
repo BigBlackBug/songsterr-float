@@ -152,7 +152,27 @@ test("док: разделители между группами кнопок", 
   await settle(window);
 
   const seps = [...document.querySelectorAll(".idrtTa_controls > .fx-sep")].map((s) => s.style.order);
-  assert.deepEqual(seps, ["10", "20", "30"]);
+  assert.deepEqual(seps, ["10", "20", "30"], "группа без первой кнопки (тюнера) — разделитель всё равно есть");
+});
+
+test("окна дока встают над настоящей высотой дока, даже если он перенёсся во второй ряд", async () => {
+  let notify = null;
+  const prepare = (window) => {
+    window.ResizeObserver = class {
+      constructor(cb) { notify = cb; }
+      observe() {}
+      disconnect() {}
+    };
+  };
+  const { window, document } = setup('<aside id="controls"><div class="idrtTa_controls"></div></aside>', {}, prepare);
+  await settle(window);
+  const bar = document.querySelector(".idrtTa_controls");
+  Object.defineProperty(bar, "offsetHeight", { configurable: true, get: () => 118 });
+  notify([]);
+  assert.equal(document.documentElement.style.getPropertyValue("--fx-dock-h"), "118px");
+
+  const css = [...document.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+  assert.match(css, /--panel-bottom: calc\(var\(--dock-bottom\) \+ var\(--fx-dock-h, var\(--dock-height\)\)/);
 });
 
 test("смена хэша на сайте: классы находятся заново, CSS пересобирается", async () => {

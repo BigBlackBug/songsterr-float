@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Songsterr Float
 // @namespace    https://github.com/BigBlackBug/songsterr-float
-// @version      1.3.0
+// @version      1.3.1
 // @description  Desktop layout for Songsterr: top pill navigation, floating dock, centered panels, favorites in search
 // @match        https://www.songsterr.com/*
 // @match        https://songsterr.com/*
@@ -50,10 +50,10 @@
     dockBottom: 12,
     dockGap: 10,
     dockRadius: 22,
-    btnGap: 10,            // зазор между кнопками внутри группы
+    btnGap: 8,             // зазор между кнопками внутри группы
     rowGap: 8,
     editColGap: 8,
-    sepSpace: 14,          // воздух вокруг разделителя групп
+    sepSpace: 10,          // воздух вокруг разделителя групп
     sepHeight: 30,
     wideMin: 1869,         // от этой ширины справа есть место под видео-панель (док + 2 боковые колонки)
     logoHeight: 43,
@@ -117,7 +117,7 @@
   const MAIN_GROUPS = [
     ["c-play", "c-loop", "c-speed", "c-countin", "c-metronome"],
     ["mixer-button", "c-solo", "c-mute"],
-    ["c-transpose", "c-detectchords"],
+    ["c-tuner", "c-transpose", "c-detectchords"],
     ["c-export", "c-print", "c-revision", "fx-zoom", "c-settings"],
   ];
   const KNOWN_IDS = new Set(MAIN_GROUPS.flat());
@@ -244,7 +244,9 @@
   --dock-width: min(var(--bar-width), calc(100vw - 2 * var(--pill-offset)));
   --btn-radius: calc(var(--dock-radius) - var(--dock-inset));
   --content-top: calc(var(--pill-offset) + var(--pill-height) + var(--panel-gap));
-  --panel-bottom: calc(var(--dock-bottom) + var(--dock-height) + var(--panel-gap));
+  /* --fx-dock-h — настоящая высота дока (ставит watchDockHeight): если сайт добавит кнопку
+     и док перенесётся во второй ряд, окна всё равно встанут над ним, а не под него */
+  --panel-bottom: calc(var(--dock-bottom) + var(--fx-dock-h, var(--dock-height)) + var(--panel-gap));
   /* плашка инструментов слева от дока: всё место до него, но не уже --tools-min */
   --tools-width: clamp(var(--tools-min),
     calc((100vw - var(--dock-width)) / 2 - var(--pill-offset) - var(--panel-gap)), var(--left-width));
@@ -994,10 +996,10 @@
     const extras = rawExtras.length >= EDIT_MIN ? rawExtras : [];
     const plan = extras.length ? planEditLayout(extras) : { order: new Map(), seps: [] };
 
-    // разделитель ставим перед группой, если её первая кнопка есть в доке
+    // разделитель ставим перед группой, если в доке есть хоть одна её кнопка
     const present = new Set(items.map((el) => el.id));
     const wantSeps = MAIN_GROUPS.flatMap((ids, g) =>
-      g > 0 && present.has(ids[0]) ? [sepOrder(g)] : []
+      g > 0 && ids.some((id) => present.has(id)) ? [sepOrder(g)] : []
     ).concat(plan.seps);
 
     applyOrders(items, plan.order);
@@ -1007,6 +1009,30 @@
 
   function syncDock() {
     document.querySelectorAll(S.bar).forEach(syncDockBar);
+    watchDockHeight(document.querySelector(S.bar));
+  }
+
+  /* Окна дока живут в слое попапов сайта (z-index ниже дока) и стоят над доком
+     только за счёт отступа --panel-bottom. Поэтому отступ считаем от настоящей
+     высоты дока: ResizeObserver следит за ним и пишет --fx-dock-h на <html>. */
+  let dockSizeObserver = null;
+  let watchedDock = null;
+
+  function setDockHeight(px) {
+    const root = document.documentElement;
+    const value = px ? `${Math.round(px)}px` : "";
+    if (root.style.getPropertyValue("--fx-dock-h") === value) return;
+    if (value) root.style.setProperty("--fx-dock-h", value);
+    else root.style.removeProperty("--fx-dock-h");
+  }
+
+  function watchDockHeight(bar) {
+    if (bar === watchedDock || typeof ResizeObserver !== "function") return;
+    watchedDock = bar;
+    dockSizeObserver ??= new ResizeObserver(() => setDockHeight(watchedDock && watchedDock.offsetHeight));
+    dockSizeObserver.disconnect();
+    if (bar) dockSizeObserver.observe(bar);
+    else setDockHeight(0);
   }
 
   /* ---------- 5.4 Логотип ----------
