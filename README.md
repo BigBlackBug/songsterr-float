@@ -2,16 +2,14 @@
 
 Not happy with the new Songsterr desktop layout? This restores a cleaner, more compact one:
 
-- one floating **top pill** with navigation (Search · My tabs · New tab · For teachers | Inbox · Help · profile)
-- floating **bottom dock** with player controls, grouped with dividers
+- one compact floating **top pill**: Search · My tabs | profile, evenly spaced (New tab, Inbox and Help are hidden;
+  hidden items are in `HIDDEN_NAV`)
+- floating **bottom dock** with player controls, grouped with dividers; Transpose, Detect chords and Print are hidden
 - **tools pill** (favorite, display mode, editor…) left of the dock, shrinking to fit the space up to it; on windows too narrow for that it sits above the dock
-- mixer / tuner / transpose / settings / revisions / download windows in a tidy right column — above the dock on narrower windows, never under it
+- mixer / tuner / settings / revisions / download windows in a tidy right column — above the dock on narrower windows, never under it
 - the "original audio" video panel stacks above those windows instead of covering them; on narrower windows it sits
   above the dock, centered, at most half the dock's width
 - the **speed button shows the tempo in BPM** (the song's starting tempo × the current speed) instead of the runner icon
-- a **tab size button** (`100%`) in the dock next to Settings opens a window like the speed one: presets
-  60 / 70 / 80 / 90 / 100% and −/+ in steps of 5 (50–100%). A narrower tab squeezes measures horizontally, so more
-  fit per line while lines and notes keep their height; remembered across tabs
 - the **speed (BPM) window stays open** when you click the tab — close it with its ✕ (or Esc); its presets are
   50 / 60 / 70 / 80 / 90 / 100% instead of Songsterr's 15–175%
 - a **☆ star on every search result** to add it to / remove it from *My tabs* without opening the tab
@@ -70,7 +68,7 @@ Before pushing: `npm run check`.
 ## Customize
 
 Open `src/core.js` and edit the `G` object at the top (pill height, offsets, radius, widths…), then `npm run build`.
-Windows that should only close with their ✕ are listed in `PINNED_POPUPS`; tab size presets and limits are in `ZOOM`, speed presets in `SPEED.presets`.
+Windows that should only close with their ✕ are listed in `PINNED_POPUPS`; hidden dock buttons in `HIDDEN_IDS`; speed presets in `SPEED.presets`.
 Or tweak the generated userscript directly in Tampermonkey.
 
 ## How it survives Songsterr updates
@@ -87,11 +85,9 @@ The top pill is arranged by menu item ids (`#menu-search`, `#bottombar-help`), n
   `CLASSES` / `MODULES` in `src/core.js` are updated. Please [open an issue](https://github.com/BigBlackBug/songsterr-float/issues) with a screenshot.
 - A star changed in search updates Songsterr's servers, but a page that already loaded your favorites (e.g. the star on
   an open tab) shows the old state until it reloads.
-- Tab size works by telling Songsterr the window is wider than it is (`visualViewport.width`), so the site lays each
-  line out wider, then each line's SVG is squeezed horizontally only (`preserveAspectRatio="none"`, line height
-  kept via `--group-aspect-ratio`), so digits get slightly narrower. The extension therefore runs in the page's own world
-  (`"world": "MAIN"`, Chrome 111+ / Firefox 128+); in older browsers the button is there but does nothing.
-- Desktop only; designed for wide windows (the video panel moves to the right column from 1869px).
+- The extension runs in the page's own world (`"world": "MAIN"`, Chrome 111+ / Firefox 128+), like the userscript:
+  the speed presets drive Songsterr's own slider through its React handlers.
+- Desktop only; designed for wide windows (the video panel moves to the right column from 1711px).
 
 ## Development
 

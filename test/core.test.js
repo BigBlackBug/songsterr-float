@@ -173,33 +173,10 @@ test("BPM на кнопке скорости по центру места над
   assert.match(css, /#control-speed \[data-fx-bpm\]::before \{[^}]*flex: 1 1 auto[^}]*align-items: center/);
 });
 
-test("размер таба: шаг 5 в пределах 50–100, мусор из хранилища — 100", () => {
-  assert.equal(core.parseZoom("80"), 80);
-  assert.equal(core.parseZoom("85"), 85);
-  assert.equal(core.parseZoom(null), 100);
-  assert.equal(core.parseZoom("83"), 100);
-  assert.equal(core.parseZoom("45"), 100);
-  assert.equal(core.parseZoom("110"), 100);
-  assert.equal(core.stepZoom(100, -1), 95);
-  assert.equal(core.stepZoom(100, 1), 100, "больше 100 нельзя");
-  assert.equal(core.stepZoom(50, -1), 50, "меньше 50 нельзя");
-  assert.equal(core.stepZoom(70, 1), 75);
-  assert.ok(core.ZOOM.presets.every((v) => core.parseZoom(v) === v), "пресеты — допустимые шаги");
-});
-
-test("размер таба: окно расширяется так, чтобы строка раскладывалась в tab·100/zoom", () => {
-  // окно 1024, поля 180 → таб 844; при 80% строка должна раскладываться в 1055
-  const fake = core.zoomedViewportWidth(1024, 844, 80);
-  assert.equal(fake - 180, 844 * 100 / 80);
-  assert.equal(core.zoomedViewportWidth(1024, 844, 100), 1024);
-  assert.equal(core.zoomedViewportWidth(1024, 0, 80), 1024, "без таба — настоящая ширина");
-});
-
-test("размер таба: строки и заглушки сжимаются только по ширине", () => {
+test("док: транспонирование, аккорды и печать спрятаны", () => {
   const css = core.buildCss();
-  const ratio = "aspect-ratio: calc\\(var\\(--group-aspect-ratio\\) \\* var\\(--fx-zoom\\)\\)";
-  assert.match(css, new RegExp(`html\\[data-fx-zoom\\] \\.w2moHa_multiTrackLinesWrap > \\.sQA3oa_multiTrackLineGroup \\{[^}]*height: auto[^}]*${ratio}`));
-  assert.match(css, new RegExp(`html\\[data-fx-zoom\\] \\.w2moHa_placeholder \\{[^}]*${ratio}`));
+  assert.match(css, /#controls \.idrtTa_controls > :is\(#c-transpose, #c-detectchords, #c-print\) \{\n {2}display: none !important;/);
+  for (const id of core.HIDDEN_IDS) assert.ok(!core.MAIN_GROUPS.flat().includes(id), id);
 });
 
 test("пресеты скорости: ползунок идёт равными долями между родными пресетами", () => {
@@ -211,4 +188,11 @@ test("пресеты скорости: ползунок идёт равными 
   assert.equal(core.speedToSlider(5, stops), 0);
   assert.equal(core.speedToSlider(300, stops), 100);
   assert.deepEqual(core.SPEED.presets, [50, 60, 70, 80, 90, 100]);
+});
+
+test("верхняя плашка: по ширине содержимого, без New tab / Inbox / Help, у пунктов один отступ", () => {
+  const css = core.buildCss();
+  assert.match(css, /#tablist \{[^}]*width: max-content/);
+  assert.match(css, /#tablist :is\(#menu-newtab, #menu-inbox, #bottombar-help\), #tablist \._0meAjW_itemWrapper:has\(> :is\(#menu-newtab, #menu-inbox, #bottombar-help\)\) \{\n {2}display: none/);
+  assert.match(css, /#tablist a\._0meAjW_item, #tablist \._0meAjW_profile \{[^}]*margin: 0 !important;[^}]*padding: 0 var\(--nav-pad\)/);
 });

@@ -146,13 +146,13 @@ test("чужой data-floating-direction на <html> не трогаем", async
 });
 
 test("док: разделители между группами кнопок", async () => {
-  const ids = ["c-play", "c-loop", "mixer-button", "c-solo", "c-transpose", "c-export", "c-settings"];
+  const ids = ["c-play", "c-loop", "c-solo", "c-transpose", "c-export", "c-settings"];
   const items = ids.map((id) => `<div id="${id}" class="idrtTa_item"></div>`).join("");
   const { window, document } = setup(`<aside id="controls"><div class="idrtTa_controls">${items}</div></aside>`);
   await settle(window);
 
   const seps = [...document.querySelectorAll(".idrtTa_controls > .fx-sep")].map((s) => s.style.order);
-  assert.deepEqual(seps, ["10", "20", "30"], "группа без первой кнопки (тюнера) — разделитель всё равно есть");
+  assert.deepEqual(seps, ["10", "20"], "группа без первой кнопки (микшера) — разделитель всё равно есть");
 });
 
 test("окна дока встают над настоящей высотой дока, даже если он перенёсся во второй ряд", async () => {
@@ -263,131 +263,6 @@ test("кнопка скорости: чужая песня или нет тем�
   timing.emit(PART(1, 11));
   await settle(window);
   assert.equal(box.hasAttribute("data-fx-bpm"), false);
-});
-
-// visualViewport как в браузере: геттер width на прототипе, resize — событие объекта;
-// у контейнера таба ширина tabW (в jsdom раскладки нет)
-function withViewport({ width = 1024, tabW = 844, stored = null } = {}) {
-  const vv = { resizes: 0 };
-  vv.prepare = (window) => {
-    class VisualViewport extends window.EventTarget {}
-    Object.defineProperty(VisualViewport.prototype, "width", { configurable: true, get: () => width });
-    window.VisualViewport = VisualViewport;
-    window.visualViewport = new VisualViewport();
-    window.visualViewport.addEventListener("resize", () => vv.resizes++);
-    Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
-      configurable: true, get() { return this.id === "tablature" ? tabW : 0; },
-    });
-    if (stored) window.localStorage.setItem("fx-tab-zoom", stored);
-  };
-  return vv;
-}
-const DOCK_WITH_TAB = `
-  <aside id="controls"><div class="idrtTa_controls">
-    <div id="c-print" class="idrtTa_item"></div><div id="c-settings" class="idrtTa_item"></div>
-  </div></aside>
-  <section id="tablature"><div class="w2moHa_multiTrackLinesWrap">
-    <svg class="sQA3oa_multiTrackLineGroup" viewBox="0 0 844 197"></svg>
-  </div></section>`;
-
-test("размер таба: кнопка открывает окно, пресет и −/+ меняют размер и запоминаются", async () => {
-  const vv = withViewport();
-  const { window, document } = setup(DOCK_WITH_TAB, {}, vv.prepare);
-  await settle(window);
-
-  const btn = document.querySelector(".idrtTa_controls > #fx-zoom > button");
-  assert.ok(btn, "кнопка вставлена в док");
-  assert.equal(btn.textContent, "100%");
-  assert.equal(window.visualViewport.width, 1024, "при 100% ширина настоящая");
-  assert.equal(vv.resizes, 0);
-
-  btn.click();
-  const pop = document.getElementById("fx-zoom-pop");
-  assert.ok(pop, "окно открыто");
-  assert.equal(pop.getAttribute("data-fixpopup"), "zoom", "стоит как окна дока");
-  assert.equal(btn.getAttribute("aria-expanded"), "true");
-  assert.equal(pop.querySelector(".fx-pop-value").textContent, "100%");
-  assert.deepEqual([...pop.querySelectorAll("[data-zoom]")].map((b) => b.textContent), ["60%", "70%", "80%", "90%", "100%"]);
-  assert.equal(pop.querySelector('[data-zoom="100"]').getAttribute("aria-pressed"), "true");
-  assert.equal(pop.querySelector('[data-act="1"]').disabled, true, "больше 100 нельзя");
-
-  pop.querySelector('[data-zoom="80"]').click();
-  assert.equal(btn.textContent, "80%");
-  assert.equal(window.localStorage.getItem("fx-tab-zoom"), "80");
-  assert.equal(vv.resizes, 1, "сайт пересчитывает раскладку");
-  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 80 - 1));
-  assert.equal(pop.querySelector('[data-zoom="80"]').getAttribute("aria-pressed"), "true");
-
-  pop.querySelector('[data-act="-1"]').click();
-  assert.equal(btn.textContent, "75%", "минус — на 5");
-  assert.equal(pop.querySelector(".fx-pop-value").textContent, "75%");
-  assert.equal(pop.querySelectorAll('[aria-pressed="true"]').length, 0, "75 — не пресет");
-
-  // строка сжимается только по ширине: высоту держит CSS, SVG тянется без пропорций
-  const root = document.documentElement;
-  const line = document.querySelector(".sQA3oa_multiTrackLineGroup");
-  assert.equal(root.getAttribute("data-fx-zoom"), "75");
-  assert.equal(root.style.getPropertyValue("--fx-zoom"), "0.75");
-  assert.equal(line.getAttribute("preserveAspectRatio"), "none");
-
-  // новая строка (сайт дорисовал при прокрутке) получает то же
-  line.parentElement.insertAdjacentHTML("afterend",
-    '<div class="w2moHa_multiTrackLinesWrap"><svg class="sQA3oa_multiTrackLineGroup"></svg></div>');
-  await settle(window);
-  assert.equal(document.querySelectorAll('[preserveAspectRatio="none"]').length, 2);
-
-  pop.querySelector('[data-zoom="100"]').click();
-  assert.equal(window.localStorage.getItem("fx-tab-zoom"), null);
-  assert.equal(window.visualViewport.width, 1024);
-  assert.equal(root.hasAttribute("data-fx-zoom"), false);
-  assert.equal(root.style.getPropertyValue("--fx-zoom"), "");
-  assert.equal(document.querySelectorAll("[preserveAspectRatio]").length, 0, "в 100% строки родные");
-
-  pop.querySelector('[data-act="close"]').click();
-  assert.equal(document.getElementById("fx-zoom-pop"), null, "✕ закрывает");
-  assert.equal(btn.getAttribute("aria-expanded"), "false");
-});
-
-test("размер таба: окно закрывается повторным кликом, Esc и кликом мимо", async () => {
-  const vv = withViewport();
-  const { window, document } = setup(DOCK_WITH_TAB, {}, vv.prepare);
-  await settle(window);
-  const btn = document.querySelector("#fx-zoom > button");
-  const isOpen = () => !!document.getElementById("fx-zoom-pop");
-
-  btn.click();
-  assert.ok(isOpen());
-  btn.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
-  btn.click();
-  assert.ok(!isOpen(), "повторный клик по кнопке");
-
-  btn.click();
-  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  assert.ok(!isOpen(), "Esc");
-
-  btn.click();
-  document.getElementById("fx-zoom-pop").querySelector(".fx-pop-value")
-    .dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
-  assert.ok(isOpen(), "клик внутри окна не закрывает");
-  document.getElementById("tablature").dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
-  assert.ok(!isOpen(), "клик мимо");
-});
-
-test("размер таба: сохранённый шаг применяется, когда таб появился", async () => {
-  const vv = withViewport({ stored: "70" });
-  const { window, document } = setup('<aside id="controls"><div class="idrtTa_controls"></div></aside>', {}, vv.prepare);
-  await settle(window);
-  assert.equal(window.visualViewport.width, 1024, "таба ещё нет");
-  assert.equal(vv.resizes, 0);
-
-  document.body.insertAdjacentHTML("beforeend", '<section id="tablature"></section>');
-  await settle(window);
-  assert.equal(vv.resizes, 1, "таб появился — сайт пересчитывает раскладку");
-  assert.equal(window.visualViewport.width, 1024 + 844 * (100 / 70 - 1));
-  assert.equal(document.querySelector("#fx-zoom > button").textContent, "70%");
-
-  await settle(window);
-  assert.equal(vv.resizes, 1, "ширина та же — повторно не дёргаем");
 });
 
 // окно скорости как на сайте: ползунок 0–100 равными долями между пресетами 15…175
